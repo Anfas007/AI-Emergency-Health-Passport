@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from app.routes import patient
+from app.routes import emergency
 
 app = FastAPI(
     title="AI Emergency Health Passport",
@@ -7,6 +8,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
+app.include_router(emergency.router)
 app.include_router(patient.router)
 
 @app.get("/health")
