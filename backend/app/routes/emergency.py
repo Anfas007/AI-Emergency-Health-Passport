@@ -4,7 +4,8 @@ from app.services.token_service import generate_emergency_token
 from app.services.emergency_store import save_token, validate_token
 from app.services.database import patients_collection
 from app.services.audit_service import log_emergency_access
-
+from app.services.ai_service import run_emergency_ai
+from app.models.emergency_input import EmergencyInput
 router = APIRouter(prefix="/emergency", tags=["Emergency"])
 
 
@@ -56,3 +57,8 @@ def scan_emergency_qr(token: str):
         "patient_id": token_data["patient_id"],
         "emergency_data": patient
     }
+
+@router.post("/ai-triage")
+def emergency_ai_triage(data: EmergencyInput):
+    result = run_emergency_ai(data.dict())
+    return result
