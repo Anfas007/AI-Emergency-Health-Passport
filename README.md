@@ -20,3 +20,12 @@ This project implements an AI-powered emergency health passport system.
 - SHAP explanations
 
 For more details, see the docs/ folder.
+
+## Development Phases Status
+
+- Phase 1: Project setup & backend foundation ✅
+- Phase 2: Patient registration & ID management ✅
+- Phase 3: Medical record management (FHIR-based) ✅
+- Phase 4: AI-powered emergency triage & action suggestions ✅
+- Phase 5: QR-based emergency access & security (Upcoming)
+- Phase 6: Testing, evaluation & documentation (Upcoming)

@@ -60,5 +60,11 @@ def scan_emergency_qr(token: str):
 
 @router.post("/ai-triage")
 def emergency_ai_triage(data: EmergencyInput):
-    result = run_emergency_ai(data.dict())
-    return result
+    try:
+        result = run_emergency_ai(data.dict())
+        return result
+    except Exception as e:
+        import traceback
+        print(f"Error in ai-triage: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
