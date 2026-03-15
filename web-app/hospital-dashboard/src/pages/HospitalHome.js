@@ -1,12 +1,60 @@
+import { useState, useEffect } from "react";
+import { fetchDashboardStats, fetchEnhancedAuditLogs } from "../services/api";
+
 export default function HospitalHome({ onSelect, adminName }) {
-  const cards = [
-    { key: "doctors", icon: "👨‍⚕️", label: "Doctor Management", desc: "Register, verify & assign doctors to your hospital", color: "#EFF6FF" },
-    { key: "departments", icon: "🏢", label: "Department Management", desc: "Create, update & organize hospital departments", color: "#F0FDFA" },
-    { key: "record-access", icon: "🔍", label: "Record Access Monitor", desc: "Track who accessed patient records and when", color: "#ECFDF5" },
-    { key: "audit-logs", icon: "📋", label: "Emergency Access Logs", desc: "View full emergency access audit trail", color: "#FFFBEB" },
-    { key: "compliance", icon: "📊", label: "Compliance & Reports", desc: "Generate compliance summary and analytics reports", color: "#F5F3FF" },
-    { key: "profile", icon: "👤", label: "Hospital Profile", desc: "Manage your profile and account settings", color: "#FFF1F2" },
-  ];
+  const [stats, setStats] = useState(null);
+  const [feed, setFeed] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [feedLoading, setFeedLoading] = useState(true);
+
+  useEffect(() => {
+    fetchDashboardStats()
+      .then(setStats)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+
+    const today = new Date().toISOString().slice(0, 10);
+    fetchEnhancedAuditLogs({ date_from: today, date_to: today, limit: 50 })
+      .then((data) => setFeed(data.logs || []))
+      .catch(() => {})
+      .finally(() => setFeedLoading(false));
+  }, []);
+
+  const fmt = (n) => (n != null ? n.toLocaleString() : "—");
+
+  const formatTime = (ts) => {
+    if (!ts) return "—";
+    const d = new Date(ts);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const formatDate = (ts) => {
+    if (!ts) return "";
+    const d = new Date(ts);
+    const today = new Date();
+    if (d.toDateString() === today.toDateString()) return "Today";
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+    return d.toLocaleDateString([], { month: "short", day: "numeric" });
+  };
+
+  const buildEvent = (log) => {
+    if (log.detail) return log.detail;
+    const actor = log.actor_id || log.role || "Unknown";
+    const patient = log.patient_id || "—";
+    return `${actor} accessed Patient ${patient}`;
+  };
+
+  const typeBadge = (mode) => {
+    if (!mode) return { cls: "badge-neutral", label: "Unknown" };
+    const m = mode.toUpperCase();
+    if (m === "EMERGENCY") return { cls: "badge-danger", label: "Emergency Override" };
+    if (m === "QR_SCAN") return { cls: "badge-warning", label: "QR Scan" };
+    if (m === "NORMAL_CONSULTATION") return { cls: "badge-info", label: "Consultation" };
+    if (m === "NOTIFICATION") return { cls: "badge-success", label: "Notification" };
+    return { cls: "badge-neutral", label: mode };
+  };
 
   return (
     <div className="animate-fade-in">
@@ -16,33 +64,87 @@ export default function HospitalHome({ onSelect, adminName }) {
         <p className="page-subtitle">Here's an overview of your hospital management dashboard</p>
       </div>
 
-      {/* KPI Cards */}
+      {/* Live KPI Cards */}
       <div className="kpi-grid">
-        <KPICard icon="👨‍⚕️" iconBg="blue" value="—" label="Total Doctors" change="+2 this week" up />
-        <KPICard icon="🏥" iconBg="green" value="—" label="Active Patients" change="Today" />
-        <KPICard icon="🚨" iconBg="red" value="—" label="Emergencies Today" />
-        <KPICard icon="🤖" iconBg="teal" value="—" label="AI Alerts" change="Last 24h" />
+        <KPICard
+          icon="👨‍⚕️" iconBg="blue"
+          value={loading ? "…" : fmt(stats?.total_doctors)}
+          label="Registered Doctors"
+          change="In your hospital"
+        />
+        <KPICard
+          icon="👥" iconBg="green"
+          value={loading ? "…" : fmt(stats?.total_patients)}
+          label="Total Patients"
+          change="All registered"
+        />
+        <KPICard
+          icon="🚨" iconBg="red"
+          value={loading ? "…" : fmt(stats?.emergency_scans_today)}
+          label="Emergency Scans"
+          change="Today"
+        />
+        <KPICard
+          icon="🩺" iconBg="teal"
+          value={loading ? "…" : fmt(stats?.consultations_today)}
+          label="Consultations"
+          change="Today"
+        />
       </div>
 
-      {/* Quick Navigation */}
-      <div style={{ marginBottom: 8 }}>
-        <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)", marginBottom: 16 }}>
-          Quick Actions
+      {/* Audit Activity Feed */}
+      <div style={{ marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>
+          📡 Audit Activity Feed
         </h3>
+        <button
+          onClick={() => onSelect("audit-compliance")}
+          className="btn btn-secondary btn-sm"
+          style={{ fontSize: 12 }}
+        >
+          View All Logs →
+        </button>
       </div>
 
-      <div className="nav-grid">
-        {cards.map(c => (
-          <button key={c.key} className="nav-card" onClick={() => onSelect(c.key)}>
-            <div className="nav-card-icon" style={{ background: c.color }}>
-              <span style={{ fontSize: 26 }}>{c.icon}</span>
-            </div>
-            <div className="nav-card-title">{c.label}</div>
-            <div className="nav-card-desc">{c.desc}</div>
-            <span className="nav-card-arrow">→</span>
-          </button>
-        ))}
-      </div>
+      {feedLoading ? (
+        <p className="text-muted loading-pulse" style={{ padding: 20 }}>Loading recent activity...</p>
+      ) : feed.length === 0 ? (
+        <div className="card" style={{ textAlign: "center", padding: 40, color: "var(--text-muted)" }}>
+          <div style={{ fontSize: 40, marginBottom: 8 }}>📋</div>
+          <p>No recent activity to display.</p>
+        </div>
+      ) : (
+        <div className="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Event</th>
+                <th>Type</th>
+              </tr>
+            </thead>
+            <tbody>
+              {feed.map((log, i) => {
+                const badge = typeBadge(log.mode);
+                return (
+                  <tr key={i}>
+                    <td style={{ whiteSpace: "nowrap", fontSize: 13 }}>
+                      <div style={{ fontWeight: 600, color: "var(--text-primary)" }}>{formatTime(log.timestamp)}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{formatDate(log.timestamp)}</div>
+                    </td>
+                    <td style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                      {buildEvent(log)}
+                    </td>
+                    <td>
+                      <span className={`badge ${badge.cls}`}>{badge.label}</span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

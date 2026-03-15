@@ -6,8 +6,8 @@ from app.routes import auth
 from app.routes import hospital
 
 app = FastAPI(
-    title="AI Emergency Health Passport",
-    description="QR-based AI-assisted emergency health access system",
+    title="Emergency Health Passport",
+    description="QR-based emergency health access system",
     version="1.0.0"
 )
 

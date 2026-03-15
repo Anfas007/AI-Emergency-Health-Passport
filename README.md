@@ -1,12 +1,13 @@
 # AI-Emergency-Health-Passport
 
-This project implements an AI-powered emergency health passport system.
+This project implements an emergency health passport system.
 
 ## Project Structure
 
 - `backend/`: Backend application with API routes
-- `ai-engine/`: Contains AI models and inference logic
 - `docs/`: Documentation files
+- `web-app/`: Hospital and doctor dashboard applications
+- `mobile_app/`: Flutter mobile app
 
 ## Getting Started
 
@@ -15,9 +16,9 @@ This project implements an AI-powered emergency health passport system.
 
 ## Features
 
-- Condition prediction
-- Action suggestions
-- SHAP explanations
+- Emergency QR-based access
+- Patient and doctor workflows
+- Audit logs and compliance reporting
 
 For more details, see the docs/ folder.
 
@@ -26,6 +27,6 @@ For more details, see the docs/ folder.
 - Phase 1: Project setup & backend foundation ✅
 - Phase 2: Patient registration & ID management ✅
 - Phase 3: Medical record management (FHIR-based) ✅
-- Phase 4: AI-powered emergency triage & action suggestions ✅
-- Phase 5: QR-based emergency access & security (Upcoming)
+- Phase 4: Emergency access controls and sharing ✅
+- Phase 5: New AI feature integration (Planned)
 - Phase 6: Testing, evaluation & documentation (Upcoming)

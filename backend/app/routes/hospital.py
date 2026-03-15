@@ -37,6 +37,7 @@ from app.services.database import (
     doctors_collection, audit_logs_collection,
     shared_access_collection, emergency_sessions_collection,
     patients_collection, doctor_hospital_associations_collection,
+    consent_collection, consultations_collection,
 )
 from app.services.auth_service import (
     hash_password, verify_password,
@@ -578,7 +579,11 @@ def list_doctors(current: dict = Depends(get_current_admin)):
 
     # Unaffiliated doctors (no hospital at all)
     unaffiliated = list(doctors_collection.find(
-        {"hospital_code": {"$in": [None, "", {"$exists": False}]}},
+        {"$or": [
+            {"hospital_code": None},
+            {"hospital_code": ""},
+            {"hospital_code": {"$exists": False}},
+        ]},
         {"_id": 0, "password": 0},
     ))
 
@@ -735,4 +740,160 @@ def generate_compliance_report(
             "total_auto_shares": total_auto_shares,
             "total_access_events": total_access_events,
         },
+    }
+
+
+# ═══════════════════════════════════════════════
+# 7️⃣  PATIENT REGISTRY (Hospital View)
+# ═══════════════════════════════════════════════
+
+@router.get("/patients/search")
+def search_patients(
+    patient_id: str = "",
+    name: str = "",
+    current: dict = Depends(get_current_admin),
+):
+    """Search patients by patient_id or name (partial match)."""
+    query = {}
+    if patient_id:
+        query["patient_id"] = {"$regex": patient_id, "$options": "i"}
+    if name:
+        query["name"] = {"$regex": name, "$options": "i"}
+    if not query:
+        return {"patients": []}
+
+    results = list(patients_collection.find(
+        query, {"_id": 0, "password": 0}
+    ).limit(50))
+
+    return {"patients": results}
+
+
+@router.get("/patients/{patient_id}")
+def get_patient_detail(
+    patient_id: str,
+    current: dict = Depends(get_current_admin),
+):
+    """Get full patient demographics, consent status, and medical summary."""
+    patient = patients_collection.find_one(
+        {"patient_id": patient_id}, {"_id": 0, "password": 0}
+    )
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    # Consent status
+    consent_rec = consent_collection.find_one(
+        {"patient_id": patient_id}, {"_id": 0},
+        sort=[("created_at", -1)]
+    )
+    consent_granted = False
+    if consent_rec:
+        consent_granted = bool(consent_rec.get("granted", False))
+        if consent_rec.get("expires_at") and hasattr(consent_rec["expires_at"], "isoformat"):
+            consent_rec["expires_at"] = consent_rec["expires_at"].isoformat()
+        if consent_rec.get("created_at") and hasattr(consent_rec["created_at"], "isoformat"):
+            consent_rec["created_at"] = consent_rec["created_at"].isoformat()
+
+    # Hospital-specific visit history (consultations from this hospital)
+    hospital_code = current["hospital_code"]
+    visits = list(consultations_collection.find(
+        {"patient_id": patient_id, "hospital_code": hospital_code},
+        {"_id": 0}
+    ).sort("timestamp", -1).limit(50))
+    for v in visits:
+        if v.get("created_at") and hasattr(v["created_at"], "isoformat"):
+            v["created_at"] = v["created_at"].isoformat()
+
+    return {
+        "patient": patient,
+        "consent": consent_rec or {"granted": False},
+        "consent_granted": consent_granted,
+        "visit_history": visits,
+    }
+
+
+# ═══════════════════════════════════════════════
+# 8️⃣  ENHANCED AUDIT LOGS & COMPLIANCE
+# ═══════════════════════════════════════════════
+
+@router.get("/audit-logs/enhanced")
+def enhanced_audit_logs(
+    current: dict = Depends(get_current_admin),
+    limit: int = 500,
+    patient_id: str = "",
+    doctor_id: str = "",
+    access_type: str = "",      # EMERGENCY | NORMAL_CONSULTATION | QR_SCAN | etc
+    date_from: str = "",        # ISO date string
+    date_to: str = "",          # ISO date string
+):
+    """Enhanced audit logs with rich filtering for compliance."""
+    query = {}
+    if patient_id:
+        query["patient_id"] = {"$regex": patient_id, "$options": "i"}
+    if doctor_id:
+        query["actor_id"] = {"$regex": doctor_id, "$options": "i"}
+    if access_type:
+        query["mode"] = access_type.upper()
+    if date_from:
+        query.setdefault("timestamp", {})["$gte"] = date_from
+    if date_to:
+        query.setdefault("timestamp", {})["$lte"] = date_to
+
+    logs = list(audit_logs_collection.find(
+        query, {"_id": 0}
+    ).sort("timestamp", -1).limit(limit))
+
+    # Gather distinct access types for filter dropdowns
+    access_types = audit_logs_collection.distinct("mode")
+
+    return {
+        "total": len(logs),
+        "filters": {
+            "patient_id": patient_id,
+            "doctor_id": doctor_id,
+            "access_type": access_type,
+            "date_from": date_from,
+            "date_to": date_to,
+        },
+        "access_types": access_types,
+        "logs": logs,
+    }
+
+
+# ═══════════════════════════════════════════════
+# 9️⃣  DASHBOARD STATS (Live KPIs)
+# ═══════════════════════════════════════════════
+
+@router.get("/dashboard-stats")
+def dashboard_stats(current: dict = Depends(get_current_admin)):
+    """Return live KPI numbers for the hospital dashboard home page."""
+    hospital_code = current["hospital_code"]
+
+    # 1. Total registered doctors at this hospital
+    total_doctors = doctor_hospital_associations_collection.count_documents(
+        {"hospital_code": hospital_code, "status": "active"}
+    )
+
+    # 2. Total patients in the system
+    total_patients = patients_collection.count_documents({})
+
+    # 3. Emergency scans today (audit logs with mode EMERGENCY for today)
+    today_str = datetime.utcnow().strftime("%Y-%m-%d")
+    emergency_today = audit_logs_collection.count_documents({
+        "hospital_code": hospital_code,
+        "mode": "EMERGENCY",
+        "timestamp": {"$regex": f"^{today_str}"},
+    })
+
+    # 4. Total consultations today
+    consultations_today = consultations_collection.count_documents({
+        "hospital_code": hospital_code,
+        "timestamp": {"$regex": f"^{today_str}"},
+    })
+
+    return {
+        "total_doctors": total_doctors,
+        "total_patients": total_patients,
+        "emergency_scans_today": emergency_today,
+        "consultations_today": consultations_today,
     }

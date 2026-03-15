@@ -1,12 +1,6 @@
 export default function DoctorHome({ onSelect, doctorName, hospitalName, hospitalCode, multiHospital, onSwitchHospital }) {
   const cards = [
     {
-      icon: "🚨", title: "Emergency Consultation",
-      desc: "AI-assisted triage for emergency patients via QR scan",
-      accent: "var(--emergency)", iconBg: "var(--emergency-light)",
-      key: "emergency",
-    },
-    {
       icon: "🩺", title: "Normal Consultation",
       desc: "Routine patient visits — symptoms, diagnosis & prescription",
       accent: "var(--primary)", iconBg: "var(--primary-light)",

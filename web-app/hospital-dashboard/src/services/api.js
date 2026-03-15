@@ -164,3 +164,34 @@ export async function generateComplianceReport(filters = {}) {
     body: JSON.stringify(filters),
   });
 }
+
+// ═══════ Patient Registry ═══════
+
+export async function searchPatients(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.patient_id) qs.set("patient_id", params.patient_id);
+  if (params.name) qs.set("name", params.name);
+  return request(`${API_BASE}/hospital/patients/search?${qs}`, { headers: authHeaders() });
+}
+
+export async function getPatientDetail(patientId) {
+  return request(`${API_BASE}/hospital/patients/${patientId}`, { headers: authHeaders() });
+}
+
+// ═══════ Dashboard Stats ═══════
+
+export async function fetchDashboardStats() {
+  return request(`${API_BASE}/hospital/dashboard-stats`, { headers: authHeaders() });
+}
+
+// ═══════ Enhanced Audit Logs ═══════
+
+export async function fetchEnhancedAuditLogs(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.patient_id) qs.set("patient_id", params.patient_id);
+  if (params.doctor_id) qs.set("doctor_id", params.doctor_id);
+  if (params.access_type) qs.set("access_type", params.access_type);
+  if (params.date_from) qs.set("date_from", params.date_from);
+  if (params.date_to) qs.set("date_to", params.date_to);
+  return request(`${API_BASE}/hospital/audit-logs/enhanced?${qs}`, { headers: authHeaders() });
+}

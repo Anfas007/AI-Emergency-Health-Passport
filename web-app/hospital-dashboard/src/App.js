@@ -2,11 +2,9 @@ import { useState, useEffect } from "react";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import HospitalHome from "./pages/HospitalHome";
-import Departments from "./pages/Departments";
 import DoctorManagement from "./pages/DoctorManagement";
-import RecordAccessMonitor from "./pages/RecordAccessMonitor";
-import AuditLogs from "./pages/AuditLogs";
-import ComplianceReport from "./pages/ComplianceReport";
+import PatientManagement from "./pages/PatientManagement";
+import AuditCompliance from "./pages/AuditCompliance";
 import AdminProfile from "./pages/AdminProfile";
 import Sidebar from "./components/Sidebar";
 import TopHeader from "./components/TopHeader";
@@ -14,11 +12,9 @@ import { getToken, clearToken, fetchProfile } from "./services/api";
 
 const PAGE_TITLES = {
   null: "Dashboard Overview",
-  departments: "Department Management",
-  doctors: "Doctor Management",
-  "record-access": "Record Access Monitor",
-  "audit-logs": "Emergency Access Logs",
-  compliance: "Compliance & Reports",
+  doctors: "Hospital Management",
+  patients: "Patient Management",
+  "audit-compliance": "Audit Logs & Compliance",
   profile: "Hospital Profile",
 };
 
@@ -82,11 +78,9 @@ function App() {
   // ── Authenticated layout with sidebar ──
   const renderPage = () => {
     if (!mode) return <HospitalHome onSelect={setMode} adminName={adminName} />;
-    if (mode === "departments") return <Departments onBack={goHome} />;
     if (mode === "doctors") return <DoctorManagement onBack={goHome} />;
-    if (mode === "record-access") return <RecordAccessMonitor onBack={goHome} />;
-    if (mode === "audit-logs") return <AuditLogs onBack={goHome} />;
-    if (mode === "compliance") return <ComplianceReport onBack={goHome} />;
+    if (mode === "patients") return <PatientManagement onBack={goHome} />;
+    if (mode === "audit-compliance") return <AuditCompliance onBack={goHome} />;
     if (mode === "profile") return <AdminProfile onBack={goHome} onLogout={handleLogout} />;
     return null;
   };

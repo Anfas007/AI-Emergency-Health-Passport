@@ -6,12 +6,10 @@ export default function Sidebar({ activeMode, onSelect, hospitalName }) {
     { section: "Main" },
     { key: null, icon: "📊", label: "Dashboard Overview" },
     { section: "Management" },
-    { key: "doctors", icon: "👨‍⚕️", label: "Doctor Management" },
-    { key: "departments", icon: "🏢", label: "Department Management" },
+    { key: "doctors", icon: "🏥", label: "Hospital Management" },
+    { key: "patients", icon: "👥", label: "Patient Management" },
     { section: "Monitoring" },
-    { key: "record-access", icon: "🔍", label: "Record Access Monitor" },
-    { key: "audit-logs", icon: "📋", label: "Emergency Access Logs" },
-    { key: "compliance", icon: "📊", label: "Compliance & Reports" },
+    { key: "audit-compliance", icon: "📋", label: "Audit Logs & Compliance" },
     { section: "Settings" },
     { key: "profile", icon: "👤", label: "Hospital Profile" },
   ];
@@ -22,7 +20,7 @@ export default function Sidebar({ activeMode, onSelect, hospitalName }) {
       <div className="sidebar-brand">
         <div className="sidebar-brand-icon">🏥</div>
         <div className="sidebar-brand-text">
-          AI Emergency
+          Emergency
           <small>Health Passport</small>
         </div>
       </div>

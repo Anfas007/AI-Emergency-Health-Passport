@@ -115,19 +115,6 @@ export function getSavedHospitals() {
 
 // ── Emergency ──
 
-export async function runEmergencyAI(data) {
-  const response = await fetch(`${API_BASE}/emergency/ai-triage`, {
-    method: "POST",
-    headers: authHeaders(),
-    body: JSON.stringify(data),
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || "AI triage request failed");
-  }
-  return response.json();
-}
-
 export async function postDoctorDecision(decisionData) {
   const response = await fetch(`${API_BASE}/emergency/doctor-decision`, {
     method: "POST",

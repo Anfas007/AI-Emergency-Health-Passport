@@ -1,16 +1,19 @@
 import { useState, useEffect } from "react";
-import { fetchDoctors, registerDoctor, verifyDoctor, assignDoctor, revokeDoctor, transferDoctor } from "../services/api";
+import { fetchDoctors, registerDoctor, verifyDoctor, assignDoctor, revokeDoctor } from "../services/api";
 
 export default function DoctorManagement({ onBack }) {
   const [data, setData] = useState({ hospital_doctors: [], legacy_doctors: [], unaffiliated_doctors: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [tab, setTab] = useState("list"); // list | register | verify | assign | revoke
+  const [tab, setTab] = useState("directory"); // directory | register
   const [regForm, setRegForm] = useState({ name: "", email: "", password: "", specialization: "General Medicine", phone: "", role: "doctor", department: "" });
-  const [verForm, setVerForm] = useState({ doctor_id: "", verified: true, specialization: "", department: "", role_level: "doctor" });
   const [assignForm, setAssignForm] = useState({ doctor_id: "", role: "doctor", department: "" });
-  const [revokeForm, setRevokeForm] = useState({ doctor_id: "", reason: "", action: "revoke" }); // action: revoke | transfer
+  const [showAssignModal, setShowAssignModal] = useState(false);
+
+  // Deactivate confirmation
+  const [deactivateTarget, setDeactivateTarget] = useState(null);
+  const [deactivateReason, setDeactivateReason] = useState("");
 
   const load = async () => {
     setLoading(true);
@@ -30,80 +33,143 @@ export default function DoctorManagement({ onBack }) {
     } catch (e) { setError(e.message); }
   };
 
-  const handleVerify = async (e) => {
-    e.preventDefault(); setError(""); setSuccess("");
-    try {
-      const r = await verifyDoctor(verForm);
-      setSuccess(`Doctor ${r.doctor_id} — ${r.status}`);
-      setVerForm(v => ({ ...v, doctor_id: "" }));
-      load();
-    } catch (e) { setError(e.message); }
-  };
-
   const handleAssign = async (e) => {
     e.preventDefault(); setError(""); setSuccess("");
     try {
       const r = await assignDoctor(assignForm);
       setSuccess(r.message || "Doctor assigned successfully");
       setAssignForm({ doctor_id: "", role: "doctor", department: "" });
+      setShowAssignModal(false);
       load();
     } catch (e) { setError(e.message); }
   };
 
-  const handleRevoke = async (e) => {
-    e.preventDefault(); setError(""); setSuccess("");
+  const handleDeactivate = async () => {
+    if (!deactivateTarget) return;
+    setError(""); setSuccess("");
     try {
-      let r;
-      if (revokeForm.action === "transfer") {
-        r = await transferDoctor({ doctor_id: revokeForm.doctor_id, reason: revokeForm.reason });
-      } else {
-        r = await revokeDoctor({ doctor_id: revokeForm.doctor_id, reason: revokeForm.reason });
-      }
-      setSuccess(r.message || `Doctor ${revokeForm.action}d successfully`);
-      setRevokeForm({ doctor_id: "", reason: "", action: "revoke" });
+      const r = await revokeDoctor({ doctor_id: deactivateTarget.doctor_id, reason: deactivateReason });
+      setSuccess(r.message || `Doctor ${deactivateTarget.name} deactivated successfully`);
+      setDeactivateTarget(null);
+      setDeactivateReason("");
       load();
     } catch (e) { setError(e.message); }
-  };
-
-  const quickVerify = (doc) => {
-    setTab("verify");
-    setVerForm(v => ({ ...v, doctor_id: doc.doctor_id, specialization: doc.specialization || "" }));
   };
 
   const quickAssign = (doc) => {
-    setTab("assign");
     setAssignForm(f => ({ ...f, doctor_id: doc.doctor_id }));
+    setShowAssignModal(true);
   };
 
-  const quickRevoke = (doc) => {
-    setTab("revoke");
-    setRevokeForm(f => ({ ...f, doctor_id: doc.doctor_id }));
+  // Determine status for each doctor
+  const getStatus = (doc) => {
+    if (doc.association_status === "revoked" || doc.association_status === "transferred") {
+      return { label: "Inactive", cls: "badge-danger" };
+    }
+    if (!doc.verified) {
+      return { label: "Pending", cls: "badge-warning" };
+    }
+    return { label: "Active", cls: "badge-success" };
   };
 
   return (
     <div className="animate-fade-in">
       <h2 className="page-title">Doctor Management</h2>
-      <p className="page-subtitle">Register, verify & assign doctors to your hospital</p>
+      <p className="page-subtitle">Register & manage doctors at your hospital</p>
 
-      {/* Tabs */}
+      {/* Simplified Tabs — only 2 */}
       <div className="tab-bar">
-        {["list", "register", "verify", "assign", "revoke"].map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`tab-btn${tab === t ? " active" : ""}`}>
-            {t === "list" ? "📋 Doctor List" :
-             t === "register" ? "➕ Register" :
-             t === "verify" ? "✅ Verify" :
-             t === "assign" ? "🔗 Assign" : "🚫 Revoke"}
-          </button>
-        ))}
+        <button onClick={() => setTab("directory")}
+          className={`tab-btn${tab === "directory" ? " active" : ""}`}>
+          📋 Doctor Directory
+        </button>
+        <button onClick={() => setTab("register")}
+          className={`tab-btn${tab === "register" ? " active" : ""}`}>
+          ➕ Register New Doctor
+        </button>
       </div>
 
       {error && <div className="alert alert-error">⚠️ {error}</div>}
       {success && <div className="alert alert-success">✅ {success}</div>}
 
-      {/* Tab: List */}
-      {tab === "list" && (
+      {/* Deactivate Confirmation Modal */}
+      {deactivateTarget && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex",
+          alignItems: "center", justifyContent: "center", zIndex: 1000,
+        }}>
+          <div className="card" style={{ maxWidth: 440, width: "90%", padding: 28 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--danger)", marginBottom: 8 }}>
+              ⚠️ Deactivate Doctor
+            </h3>
+            <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 16, lineHeight: 1.6 }}>
+              You are about to deactivate <strong>{deactivateTarget.name}</strong> ({deactivateTarget.doctor_id}).
+              This is a soft delete — the record will be preserved for audit but the doctor will lose access.
+            </p>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 6 }}>
+                Reason (optional)
+              </label>
+              <textarea
+                value={deactivateReason}
+                onChange={(e) => setDeactivateReason(e.target.value)}
+                className="form-input"
+                style={{ minHeight: 60, width: "100%" }}
+                placeholder="e.g. Resigned, transferred, policy violation..."
+              />
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => { setDeactivateTarget(null); setDeactivateReason(""); }}
+                className="btn btn-secondary">Cancel</button>
+              <button onClick={handleDeactivate} className="btn btn-danger">
+                Deactivate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Modal */}
+      {showAssignModal && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex",
+          alignItems: "center", justifyContent: "center", zIndex: 1000,
+        }}>
+          <div className="card" style={{ maxWidth: 440, width: "90%", padding: 28 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--primary)", marginBottom: 16 }}>
+              🔗 Assign Doctor to Hospital
+            </h3>
+            <form onSubmit={handleAssign}>
+              <div className="form-group">
+                <label className="form-label">Doctor ID</label>
+                <input value={assignForm.doctor_id} readOnly className="form-input" style={{ background: "var(--border-light)" }} />
+              </div>
+              <div className="grid-2">
+                <div className="form-group">
+                  <label className="form-label">Role</label>
+                  <select value={assignForm.role} onChange={e => setAssignForm(f => ({ ...f, role: e.target.value }))} className="form-select">
+                    <option value="doctor">Doctor</option><option value="specialist">Specialist</option>
+                    <option value="emergency_doctor">Emergency Doctor</option><option value="hod">Head of Department</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Department</label>
+                  <input value={assignForm.department} onChange={e => setAssignForm(f => ({ ...f, department: e.target.value }))} className="form-input" placeholder="e.g. Cardiology" />
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+                <button type="button" onClick={() => setShowAssignModal(false)} className="btn btn-secondary">Cancel</button>
+                <button type="submit" className="btn btn-primary">Assign Doctor</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Doctor Directory */}
+      {tab === "directory" && (
         <>
+          {/* Hospital Doctors */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
             <h3 style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>
               Hospital Doctors ({data.hospital_doctors.length})
@@ -121,41 +187,52 @@ export default function DoctorManagement({ onBack }) {
               <table>
                 <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Specialization</th><th>Dept</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
                 <tbody>
-                  {data.hospital_doctors.map(d => (
-                    <tr key={d.doctor_id}>
-                      <td><span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" }}>{d.doctor_id}</span></td>
-                      <td style={{ fontWeight: 600 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <div style={{
-                            width: 32, height: 32, borderRadius: "var(--radius-full)",
-                            background: "linear-gradient(135deg, var(--primary), var(--teal))",
-                            color: "white", display: "flex", alignItems: "center", justifyContent: "center",
-                            fontSize: 13, fontWeight: 700, flexShrink: 0
-                          }}>{(d.name || "D")[0]}</div>
-                          {d.name}
-                        </div>
-                      </td>
-                      <td style={{ color: "var(--text-secondary)", fontSize: 13 }}>{d.email}</td>
-                      <td>{d.specialization || <span className="text-muted">—</span>}</td>
-                      <td>{d.association_department || d.department || <span className="text-muted">—</span>}</td>
-                      <td><span className="badge badge-info">{d.association_role || "doctor"}</span></td>
-                      <td>{d.verified
-                        ? <span className="badge badge-success">✓ Verified</span>
-                        : <span className="badge badge-warning">⏳ Pending</span>}
-                      </td>
-                      <td>
-                        <div style={{ display: "flex", gap: 6 }}>
-                          {!d.verified && <button onClick={() => quickVerify(d)} className="btn btn-primary btn-sm">Verify</button>}
-                          <button onClick={() => quickRevoke(d)} className="btn btn-danger btn-sm">Revoke</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {data.hospital_doctors.map(d => {
+                    const status = getStatus(d);
+                    return (
+                      <tr key={d.doctor_id}>
+                        <td><span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" }}>{d.doctor_id}</span></td>
+                        <td style={{ fontWeight: 600 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <div style={{
+                              width: 32, height: 32, borderRadius: "var(--radius-full)",
+                              background: status.label === "Active"
+                                ? "linear-gradient(135deg, var(--primary), var(--teal))"
+                                : status.label === "Inactive"
+                                ? "linear-gradient(135deg, #94A3B8, #CBD5E1)"
+                                : "linear-gradient(135deg, var(--warning), #FBBF24)",
+                              color: "white", display: "flex", alignItems: "center", justifyContent: "center",
+                              fontSize: 13, fontWeight: 700, flexShrink: 0
+                            }}>{(d.name || "D")[0]}</div>
+                            {d.name}
+                          </div>
+                        </td>
+                        <td style={{ color: "var(--text-secondary)", fontSize: 13 }}>{d.email}</td>
+                        <td>{d.specialization || <span className="text-muted">—</span>}</td>
+                        <td>{d.association_department || d.department || <span className="text-muted">—</span>}</td>
+                        <td><span className="badge badge-info">{d.association_role || "doctor"}</span></td>
+                        <td><span className={`badge ${status.cls}`}>{status.label}</span></td>
+                        <td>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            {status.label !== "Inactive" && (
+                              <button onClick={() => setDeactivateTarget(d)} className="btn btn-danger btn-sm">
+                                Deactivate
+                              </button>
+                            )}
+                            {status.label === "Inactive" && (
+                              <span style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic" }}>Deactivated</span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           )}
 
+          {/* Legacy Doctors */}
           {(data.legacy_doctors || []).length > 0 && (
             <>
               <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, color: "var(--text-secondary)" }}>
@@ -182,6 +259,7 @@ export default function DoctorManagement({ onBack }) {
             </>
           )}
 
+          {/* Unaffiliated Doctors */}
           {data.unaffiliated_doctors.length > 0 && (
             <>
               <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 8, color: "var(--text-secondary)" }}>
@@ -208,7 +286,7 @@ export default function DoctorManagement({ onBack }) {
         </>
       )}
 
-      {/* Tab: Register */}
+      {/* Tab: Register New Doctor */}
       {tab === "register" && (
         <div className="form-card">
           <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Register New Doctor</h3>
@@ -255,100 +333,6 @@ export default function DoctorManagement({ onBack }) {
               <input value={regForm.department} onChange={e => setRegForm(f => ({ ...f, department: e.target.value }))} className="form-input" placeholder="e.g. Cardiology" />
             </div>
             <button type="submit" className="btn btn-primary" style={{ marginTop: 8 }}>Register Doctor</button>
-          </form>
-        </div>
-      )}
-
-      {/* Tab: Verify */}
-      {tab === "verify" && (
-        <div className="form-card">
-          <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Verify & Assign Doctor</h3>
-          <form onSubmit={handleVerify}>
-            <div className="form-group">
-              <label className="form-label">Doctor ID *</label>
-              <input value={verForm.doctor_id} onChange={e => setVerForm(f => ({ ...f, doctor_id: e.target.value }))} className="form-input" placeholder="DOC-XXXXXXXX" />
-            </div>
-            <div className="grid-2">
-              <div className="form-group">
-                <label className="form-label">Specialization</label>
-                <input value={verForm.specialization} onChange={e => setVerForm(f => ({ ...f, specialization: e.target.value }))} className="form-input" placeholder="e.g. Cardiologist" />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Department</label>
-                <input value={verForm.department} onChange={e => setVerForm(f => ({ ...f, department: e.target.value }))} className="form-input" placeholder="e.g. Emergency" />
-              </div>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Role Level</label>
-              <select value={verForm.role_level} onChange={e => setVerForm(f => ({ ...f, role_level: e.target.value }))} className="form-select">
-                <option value="doctor">Doctor</option><option value="senior_doctor">Senior Doctor</option><option value="hod">Head of Department</option>
-              </select>
-            </div>
-            <div className="form-group" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <input type="checkbox" checked={verForm.verified} onChange={e => setVerForm(f => ({ ...f, verified: e.target.checked }))} style={{ width: 18, height: 18, accentColor: "var(--primary)" }} />
-              <label className="form-label" style={{ margin: 0 }}>Mark as Verified</label>
-            </div>
-            <button type="submit" className="btn btn-success" style={{ marginTop: 8 }}>Submit Verification</button>
-          </form>
-        </div>
-      )}
-
-      {/* Tab: Assign */}
-      {tab === "assign" && (
-        <div className="form-card">
-          <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>Assign Existing Doctor</h3>
-          <p className="text-sm text-muted" style={{ marginBottom: 16 }}>
-            Affiliate a doctor from the system to this hospital (transferred or multi-hospital).
-          </p>
-          <form onSubmit={handleAssign}>
-            <div className="form-group">
-              <label className="form-label">Doctor ID *</label>
-              <input value={assignForm.doctor_id} onChange={e => setAssignForm(f => ({ ...f, doctor_id: e.target.value }))} className="form-input" placeholder="DOC-XXXXXXXX" />
-            </div>
-            <div className="grid-2">
-              <div className="form-group">
-                <label className="form-label">Role</label>
-                <select value={assignForm.role} onChange={e => setAssignForm(f => ({ ...f, role: e.target.value }))} className="form-select">
-                  <option value="doctor">Doctor</option><option value="specialist">Specialist</option>
-                  <option value="emergency_doctor">Emergency Doctor</option><option value="hod">Head of Department</option>
-                </select>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Department</label>
-                <input value={assignForm.department} onChange={e => setAssignForm(f => ({ ...f, department: e.target.value }))} className="form-input" placeholder="e.g. Cardiology" />
-              </div>
-            </div>
-            <button type="submit" className="btn btn-primary" style={{ marginTop: 8 }}>Assign Doctor</button>
-          </form>
-        </div>
-      )}
-
-      {/* Tab: Revoke / Transfer */}
-      {tab === "revoke" && (
-        <div className="form-card" style={{ borderColor: "var(--danger-border)", background: "var(--danger-light)" }}>
-          <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, color: "var(--danger)" }}>Revoke / Transfer Doctor</h3>
-          <p className="text-sm text-muted" style={{ marginBottom: 16 }}>
-            <strong>Revoke</strong> removes association. <strong>Transfer</strong> marks as transferred out.
-          </p>
-          <form onSubmit={handleRevoke}>
-            <div className="form-group">
-              <label className="form-label">Doctor ID *</label>
-              <input value={revokeForm.doctor_id} onChange={e => setRevokeForm(f => ({ ...f, doctor_id: e.target.value }))} className="form-input" placeholder="DOC-XXXXXXXX" />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Action</label>
-              <select value={revokeForm.action} onChange={e => setRevokeForm(f => ({ ...f, action: e.target.value }))} className="form-select">
-                <option value="revoke">Revoke Access</option>
-                <option value="transfer">Transfer Out</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Reason</label>
-              <textarea value={revokeForm.reason} onChange={e => setRevokeForm(f => ({ ...f, reason: e.target.value }))} className="form-input" style={{ minHeight: 60 }} placeholder="Optional reason..." />
-            </div>
-            <button type="submit" className="btn btn-danger" style={{ marginTop: 8 }}>
-              {revokeForm.action === "transfer" ? "Transfer Doctor" : "Revoke Access"}
-            </button>
           </form>
         </div>
       )}

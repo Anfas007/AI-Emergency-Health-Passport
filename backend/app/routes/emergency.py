@@ -2,7 +2,6 @@ from fastapi import APIRouter, HTTPException, Header, Depends
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
-import uuid
 from app.services.token_service import generate_emergency_token
 from app.services.emergency_store import save_token, validate_token
 from app.services.database import (
@@ -12,8 +11,6 @@ from app.services.database import (
 )
 from app.services.audit_service import log_emergency_access, get_all_logs, get_logs_for_patient, get_logs_for_doctor
 from app.services.auth_service import decode_access_token, get_current_doctor
-from app.services.ai_service import run_emergency_ai
-from app.models.emergency_input import EmergencyInput
 router = APIRouter(prefix="/emergency", tags=["Emergency"])
 
 # ── Pydantic models for new endpoints ──
@@ -103,78 +100,7 @@ def scan_emergency_qr(token: str, authorization: str = Header(None)):
     }
 
 
-# 3️⃣ AI Triage
-@router.post("/ai-triage")
-def emergency_ai_triage(data: EmergencyInput):
-    try:
-        result = run_emergency_ai(data.dict())
-        # Attach a unique session_id so decision & notes can reference this consultation
-        session_id = str(uuid.uuid4())
-        result["session_id"] = session_id
-
-        severity = result.get("ai_assessment", {}).get("severity", "")
-        possible_condition = result.get("ai_assessment", {}).get("possible_condition", "")
-
-        # Persist this emergency session for timeline / history
-        session_record = {
-            "session_id": session_id,
-            "input_vitals": data.dict(),
-            "severity": severity,
-            "possible_condition": possible_condition,
-            "confidence_score": result.get("ai_assessment", {}).get("confidence_score", {}),
-            "timestamp": datetime.utcnow().isoformat()
-        }
-        emergency_sessions_collection.insert_one(session_record)
-
-        # ── AUTO-SHARE on CRITICAL ──
-        # If AI detects CRITICAL severity, auto-generate a hospital-scoped
-        # token (1-hour expiry) so the authorized hospital can access
-        # the full medical record. Token auto-revokes after expiry (TTL).
-        if severity.upper() == "CRITICAL":
-            patient_id = data.dict().get("patient_id", "")
-            if patient_id:
-                from datetime import timedelta
-                hospital_token, hospital_expires = generate_emergency_token(minutes=60)
-                save_token(hospital_token, patient_id, hospital_expires, role="hospital")
-
-                # Persist shared-access record (also TTL-indexed)
-                shared_record = {
-                    "session_id": session_id,
-                    "patient_id": patient_id,
-                    "hospital_token": hospital_token,
-                    "expires_at": hospital_expires,
-                    "severity": severity,
-                    "possible_condition": possible_condition,
-                    "auto_shared": True,
-                    "created_at": datetime.utcnow(),
-                    "status": "active"
-                }
-                shared_access_collection.insert_one(shared_record)
-
-                # Audit log for auto-share
-                log_emergency_access(
-                    patient_id, "hospital",
-                    mode="AUTO_SHARE",
-                    detail=f"AI detected CRITICAL severity – full record auto-shared for 1 hour (session {session_id})"
-                )
-
-                result["auto_shared"] = {
-                    "hospital_token": hospital_token,
-                    "expires_at": hospital_expires.isoformat(),
-                    "access_level": "full_record",
-                    "duration_minutes": 60,
-                    "note": "Full medical record auto-shared with authorized hospital. Access revoked after 1 hour."
-                }
-
-        return result
-    except Exception as e:
-        import traceback
-        print(f"Error in ai-triage: {e}")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# 4️⃣ Doctor Final Decision (accept / override AI) → persisted to MongoDB
+# 3️⃣ Doctor Final Decision (accept / override AI) → persisted to MongoDB
 @router.post("/doctor-decision")
 def submit_doctor_decision(data: DoctorDecisionInput):
     entry = {
@@ -190,7 +116,7 @@ def submit_doctor_decision(data: DoctorDecisionInput):
     return {"status": "saved", "entry": entry}
 
 
-# 5️⃣ Doctor Notes → persisted to MongoDB
+# 4️⃣ Doctor Notes → persisted to MongoDB
 @router.post("/doctor-notes")
 def submit_doctor_notes(data: DoctorNotesInput):
     entry = {
@@ -203,7 +129,7 @@ def submit_doctor_notes(data: DoctorNotesInput):
     return {"status": "saved", "entry": entry}
 
 
-# 6️⃣ Emergency Access Logs
+# 5️⃣ Emergency Access Logs
 @router.get("/logs")
 def get_emergency_logs(current: dict = Depends(get_current_doctor)):
     """Return emergency access audit logs for the currently authenticated doctor."""
@@ -219,7 +145,7 @@ def get_patient_emergency_logs(patient_id: str):
     return {"patient_id": patient_id, "logs": logs}
 
 
-# 7️⃣ Patient Emergency Timeline
+# 6️⃣ Patient Emergency Timeline
 @router.get("/timeline/{patient_id}")
 def get_patient_timeline(patient_id: str):
     """Build a chronological timeline of all emergency events for a patient."""
@@ -279,7 +205,7 @@ def get_patient_timeline(patient_id: str):
     return {"patient_id": patient_id, "timeline": timeline}
 
 
-# 8️⃣ Emergency Patient View (consolidated emergency data)
+# 7️⃣ Emergency Patient View (consolidated emergency data)
 @router.get("/patient-view/{patient_id}")
 def emergency_patient_view(patient_id: str):
     """Consolidated emergency view: patient basics + medical passport + recent sessions."""
@@ -309,7 +235,7 @@ def emergency_patient_view(patient_id: str):
     }
 
 
-# 9️⃣ Revoke hospital access early (before TTL expiry)
+# 8️⃣ Revoke hospital access early (before TTL expiry)
 @router.delete("/revoke-access/{token}")
 def revoke_hospital_access(token: str):
     """Manually revoke a hospital-scoped emergency token before it expires."""
@@ -328,7 +254,7 @@ def revoke_hospital_access(token: str):
     return {"status": "revoked", "token": token, "note": "Hospital access has been revoked."}
 
 
-# 🔟 Check shared-access status for a patient
+# 9️⃣ Check shared-access status for a patient
 @router.get("/shared-access/{patient_id}")
 def get_shared_access(patient_id: str):
     """Return active and past auto-shared access records for a patient."""

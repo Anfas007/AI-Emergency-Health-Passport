@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import Login from "./pages/Login";
 import DoctorHome from "./pages/DoctorHome";
-import EmergencyConsultation from "./pages/EmergencyConsultation";
 import NormalConsultation from "./pages/NormalConsultation";
 import ManageRecords from "./pages/ManageRecords";
 import EmergencyLogs from "./pages/EmergencyLogs";
@@ -122,7 +121,6 @@ function App() {
 
   // ── Page titles ──
   const PAGE_TITLES = {
-    emergency: "Emergency Consultation",
     normal: "Normal Consultation",
     records: "Manage Records",
     logs: "Emergency Logs",
@@ -143,7 +141,6 @@ function App() {
         />
       );
     }
-    if (mode === "emergency") return <EmergencyConsultation onBack={goHome} />;
     if (mode === "normal") return <NormalConsultation onBack={goHome} />;
     if (mode === "records") return <ManageRecords onBack={goHome} />;
     if (mode === "logs") return <EmergencyLogs onBack={goHome} />;
