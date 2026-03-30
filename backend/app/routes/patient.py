@@ -7,6 +7,7 @@ from app.services.patient_id_generator import generate_patient_id
 from app.services.audit_service import log_emergency_access
 from datetime import datetime, timedelta
 from app.services.auth_service import get_current_doctor, get_current_doctor_with_hospital
+from app.services.clinical_rules_service import get_patient_risk_and_summary, get_drug_interaction_warnings
 import uuid
 
 router = APIRouter(prefix="/patients", tags=["Patients"])
@@ -36,6 +37,8 @@ def get_patient_history(patient_id: str):
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
 
+    ai_profile = get_patient_risk_and_summary(patient)
+
     return {
         "patient_id": patient_id,
         "name": patient.get("name", ""),
@@ -44,7 +47,9 @@ def get_patient_history(patient_id: str):
         "medications": patient.get("medications", []),
         "allergies": patient.get("allergies", []),
         "chronic_conditions": patient.get("chronic_conditions", []),
-        "previous_emergencies": patient.get("previous_emergencies", [])
+        "previous_emergencies": patient.get("previous_emergencies", []),
+        "important_alerts": ai_profile.get("important_alerts", {}),
+        "emergency_summary": ai_profile.get("emergency_summary", {}),
     }
 
 
@@ -109,6 +114,8 @@ def request_normal_access(patient_id: str):
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
 
+    ai_profile = get_patient_risk_and_summary(patient)
+
     return {
         "patient_id": patient_id,
         "name": patient.get("name", ""),
@@ -118,7 +125,9 @@ def request_normal_access(patient_id: str):
         "allergies": patient.get("allergies", []),
         "chronic_conditions": patient.get("chronic_conditions", []),
         "medications": patient.get("medications", []),
-        "access_type": "normal"
+        "access_type": "normal",
+        "important_alerts": ai_profile.get("important_alerts", {}),
+        "emergency_summary": ai_profile.get("emergency_summary", {}),
     }
 
 
@@ -223,6 +232,11 @@ def save_consultation(record: ConsultationRecord, current: dict = Depends(get_cu
     consultation_id = f"CONS-{uuid.uuid4().hex[:8].upper()}"
     now = datetime.utcnow()
 
+    interaction_warning = get_drug_interaction_warnings(
+        patient,
+        record.medications_prescribed or []
+    )
+
     # Build FHIR-style structured entry
     fhir_entry = {
         "consultation_id": consultation_id,
@@ -301,6 +315,7 @@ def save_consultation(record: ConsultationRecord, current: dict = Depends(get_cu
         "patient_id": record.patient_id,
         "hospital_code": hospital_code,
         "timestamp": now.isoformat(),
+        "drug_interaction_warning": interaction_warning,
     }
 
 

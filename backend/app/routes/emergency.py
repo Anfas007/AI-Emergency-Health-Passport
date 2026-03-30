@@ -11,6 +11,7 @@ from app.services.database import (
 )
 from app.services.audit_service import log_emergency_access, get_all_logs, get_logs_for_patient, get_logs_for_doctor
 from app.services.auth_service import decode_access_token, get_current_doctor
+from app.services.clinical_rules_service import get_patient_risk_and_summary
 router = APIRouter(prefix="/emergency", tags=["Emergency"])
 
 # ── Pydantic models for new endpoints ──
@@ -93,10 +94,14 @@ def scan_emergency_qr(token: str, authorization: str = Header(None)):
     # Audit log (include actor_id when available)
     log_emergency_access(patient_id, role, actor_id=actor_id)
 
+    ai_profile = get_patient_risk_and_summary(patient or {})
+
     return {
         "patient_id": patient_id,
         "access_type": "full_record" if role == "hospital" else "critical_only",
-        "emergency_data": patient
+        "emergency_data": patient,
+        "important_alerts": ai_profile.get("important_alerts", {}),
+        "emergency_summary": ai_profile.get("emergency_summary", {})
     }
 
 
