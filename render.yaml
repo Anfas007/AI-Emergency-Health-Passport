@@ -5,8 +5,7 @@
 services:
   - type: web
     name: ai-emergency-health-passport-backend
-    env: python
-    pythonVersion: 3.11.0
+    runtime: python
     
     # Root directory relative to git root where main.py and requirements.txt exist
     rootDir: backend
