@@ -170,6 +170,9 @@ def scan_emergency_qr(token: str, authorization: str = Header(None)):
         "blood_group": patient.get("blood_group", ""),
         "phone": patient.get("phone", ""),
         "email": patient.get("email", ""),
+        "photo_url": patient.get("photo_url"),
+        "emergency_contact": patient.get("emergency_contact", ""),
+        "emergency_contact_phone": patient.get("emergency_contact_phone", ""),
     }
     uploaded_records = patient.get("uploaded_records", []) or []
     surgeries = [
