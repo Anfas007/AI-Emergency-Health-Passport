@@ -7,13 +7,70 @@ from app.services.emergency_store import save_token, validate_token
 from app.services.database import (
     patients_collection, doctor_decisions_collection,
     doctor_notes_collection, emergency_sessions_collection,
-    shared_access_collection, patient_notifications_collection
+    shared_access_collection, patient_notifications_collection,
+    patient_accounts_collection,
 )
 from app.services.audit_service import log_emergency_access, get_all_logs, get_logs_for_patient, get_logs_for_doctor
 from app.services.auth_service import decode_access_token, get_current_doctor
 from app.services.clinical_rules_service import get_patient_risk_and_summary
 import uuid
 router = APIRouter(prefix="/emergency", tags=["Emergency"])
+
+
+def _resolve_patient_profile(patient_id: str):
+    """Resolve patient profile robustly across legacy/missing profile states."""
+    pid = (patient_id or "").strip()
+    if not pid:
+        return None
+
+    patient = patients_collection.find_one({"patient_id": pid}, {"_id": 0})
+    if patient:
+        return patient
+
+    account = patient_accounts_collection.find_one(
+        {"patient_id": pid},
+        {"_id": 0, "password": 0},
+    )
+    if not account:
+        return None
+
+    email = (account.get("email") or "").strip().lower()
+    if email:
+        linked = patients_collection.find_one({"email": email}, {"_id": 0})
+        if linked:
+            if linked.get("patient_id") != pid:
+                patients_collection.update_one(
+                    {"email": email},
+                    {"$set": {"patient_id": pid}},
+                )
+                linked["patient_id"] = pid
+            return linked
+
+    minimal_profile = {
+        "patient_id": pid,
+        "name": account.get("name", ""),
+        "age": account.get("age") or 0,
+        "gender": account.get("gender") or "Not Specified",
+        "blood_group": account.get("blood_group") or "Unknown",
+        "phone": account.get("phone") or "",
+        "emergency_contact": account.get("emergency_contact") or "",
+        "email": account.get("email") or "",
+        "photo_url": account.get("photo_url"),
+        "emergency_contact_name": "",
+        "emergency_contact_phone": "",
+        "allergies": [],
+        "chronic_conditions": [],
+        "past_diagnoses": [],
+        "medications": [],
+        "uploaded_records": [],
+        "created_at": account.get("created_at") or datetime.utcnow().isoformat(),
+    }
+    patients_collection.update_one(
+        {"patient_id": pid},
+        {"$setOnInsert": minimal_profile},
+        upsert=True,
+    )
+    return patients_collection.find_one({"patient_id": pid}, {"_id": 0}) or minimal_profile
 
 # ── Pydantic models for new endpoints ──
 
@@ -32,7 +89,7 @@ class DoctorNotesInput(BaseModel):
 # 1️⃣ Generate emergency token (QR uses this token)
 @router.post("/request-access/{patient_id}")
 def request_emergency_access(patient_id: str, role: str):
-    patient = patients_collection.find_one({"patient_id": patient_id})
+    patient = _resolve_patient_profile(patient_id)
 
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
@@ -91,7 +148,7 @@ def scan_emergency_qr(token: str, authorization: str = Header(None)):
         if not patient_id:
             raise HTTPException(status_code=400, detail="Invalid QR payload")
 
-        exists = patients_collection.find_one({"patient_id": patient_id}, {"_id": 1})
+        exists = _resolve_patient_profile(patient_id)
         if not exists:
             raise HTTPException(status_code=404, detail="Patient not found")
 
@@ -99,12 +156,11 @@ def scan_emergency_qr(token: str, authorization: str = Header(None)):
         role = "hospital" if actor_role in ["admin", "hospital_admin"] else "doctor"
 
     # Core proof flow: doctor scan must resolve full profile + medical history.
-    patient = patients_collection.find_one(
-        {"patient_id": patient_id},
-        {"_id": 0}
-    )
+    patient = _resolve_patient_profile(patient_id)
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
+
+    patient_id = patient.get("patient_id", patient_id)
 
     profile = {
         "patient_id": patient.get("patient_id", ""),
