@@ -3,7 +3,6 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import HospitalHome from "./pages/HospitalHome";
 import DoctorManagement from "./pages/DoctorManagement";
-import PatientManagement from "./pages/PatientManagement";
 import AuditCompliance from "./pages/AuditCompliance";
 import AdminProfile from "./pages/AdminProfile";
 import Sidebar from "./components/Sidebar";
@@ -13,7 +12,6 @@ import { getToken, clearToken, fetchProfile } from "./services/api";
 const PAGE_TITLES = {
   null: "Dashboard Overview",
   doctors: "Hospital Management",
-  patients: "Patient Management",
   "audit-compliance": "Audit Logs & Compliance",
   profile: "Hospital Profile",
 };
@@ -79,7 +77,6 @@ function App() {
   const renderPage = () => {
     if (!mode) return <HospitalHome onSelect={setMode} adminName={adminName} />;
     if (mode === "doctors") return <DoctorManagement onBack={goHome} />;
-    if (mode === "patients") return <PatientManagement onBack={goHome} />;
     if (mode === "audit-compliance") return <AuditCompliance onBack={goHome} />;
     if (mode === "profile") return <AdminProfile onBack={goHome} onLogout={handleLogout} />;
     return null;

@@ -271,6 +271,17 @@ export async function fetchConsultationHistory(patientId) {
   return response.json();
 }
 
+export async function fetchPatientMedicalHistory(patientId) {
+  const response = await fetch(`${API_BASE}/patients/medical-history/${patientId}`, {
+    headers: authHeaders(),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to fetch patient medical history");
+  }
+  return response.json();
+}
+
 export async function notifyPatient(patientId, payload) {
   const response = await fetch(`${API_BASE}/patients/notify/${patientId}`, {
     method: "POST",

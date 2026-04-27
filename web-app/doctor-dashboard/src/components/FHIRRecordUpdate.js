@@ -4,6 +4,8 @@
  * Observation, Condition, MedicationRequest.
  * Timestamped entry with doctor signature.
  */
+import { formatLocalDateTime } from "../utils/time";
+
 export default function FHIRRecordUpdate({ consultation }) {
   if (!consultation) return null;
 
@@ -33,7 +35,7 @@ export default function FHIRRecordUpdate({ consultation }) {
       </div>
 
       <div className="text-secondary" style={{ marginTop: 14, fontSize: 12 }}>
-        <span>🕐 {consultation.timestamp || "—"}</span>
+        <span>🕐 {consultation.timestamp ? formatLocalDateTime(consultation.timestamp) : "—"}</span>
         <span style={{ marginLeft: 16 }}>✍️ {consultation.doctor_signature || "—"}</span>
       </div>
     </div>

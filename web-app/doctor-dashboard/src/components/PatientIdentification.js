@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Html5Qrcode } from "html5-qrcode";
 import { requestNormalAccess } from "../services/api";
 
 /**
@@ -11,9 +12,28 @@ export default function PatientIdentification({ onPatientLoaded }) {
   const [patientId, setPatientId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const scannerRef = useRef(null);
+  const scannerDomId = "normal-consult-qr-reader";
+
+  const parsePatientIdFromQr = (raw) => {
+    const value = (raw || "").trim();
+    if (!value) return "";
+
+    const lower = value.toLowerCase();
+    if (lower.startsWith("patient_id:")) {
+      return value.split(":", 2)[1]?.trim() || "";
+    }
+
+    if (lower.startsWith("http") && value.includes("/")) {
+      return value.replace(/\/+$/, "").split("/").pop()?.trim() || "";
+    }
+
+    return value;
+  };
 
   const handleLoad = async (id) => {
-    const pid = (id || patientId).trim();
+    const pid = parsePatientIdFromQr(id || patientId);
     if (!pid) return;
     setLoading(true);
     setError("");
@@ -27,14 +47,51 @@ export default function PatientIdentification({ onPatientLoaded }) {
     }
   };
 
-  const handleQRScan = () => {
-    // Simple prompt-based QR input (until a scanner library is wired)
-    const scanned = window.prompt("Scan or enter Patient ID from QR code:");
-    if (scanned && scanned.trim()) {
-      setPatientId(scanned.trim());
-      handleLoad(scanned.trim());
+  const stopScanner = async () => {
+    if (!scannerRef.current) return;
+    try {
+      await scannerRef.current.stop();
+    } catch (_) {
+      // Ignore stop errors when scanner is already closed.
+    }
+    scannerRef.current = null;
+    setScanning(false);
+  };
+
+  const startScanner = async () => {
+    setError("");
+    if (scannerRef.current) {
+      await stopScanner();
+    }
+
+    try {
+      const scanner = new Html5Qrcode(scannerDomId);
+      scannerRef.current = scanner;
+
+      await scanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 220, height: 220 } },
+        async (decodedText) => {
+          const pid = parsePatientIdFromQr(decodedText);
+          if (!pid) return;
+          setPatientId(pid);
+          await stopScanner();
+          handleLoad(pid);
+        }
+      );
+
+      setScanning(true);
+    } catch (err) {
+      setError(err?.message || "Unable to access camera for QR scanning.");
+      setScanning(false);
     }
   };
+
+  useEffect(() => {
+    return () => {
+      stopScanner();
+    };
+  }, []);
 
   return (
     <div className="step-card">
@@ -42,11 +99,21 @@ export default function PatientIdentification({ onPatientLoaded }) {
 
       {/* Mode selector */}
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <button type="button" onClick={() => setMode("id")}
+        <button
+          type="button"
+          onClick={async () => {
+            setMode("id");
+            await stopScanner();
+          }}
           className={`chip ${mode === "id" ? "chip-active" : "chip-default"}`}>
           🪪 Patient ID
         </button>
-        <button type="button" onClick={() => { setMode("qr"); handleQRScan(); }}
+        <button
+          type="button"
+          onClick={async () => {
+            setMode("qr");
+            await startScanner();
+          }}
           className={`chip ${mode === "qr" ? "chip-active" : "chip-default"}`}>
           📷 QR Code
         </button>
@@ -69,8 +136,53 @@ export default function PatientIdentification({ onPatientLoaded }) {
         </div>
       )}
 
+      {mode === "qr" && (
+        <div>
+          <div
+            id={scannerDomId}
+            style={{
+              width: "100%",
+              minHeight: 240,
+              borderRadius: 12,
+              overflow: "hidden",
+              border: "1px solid #d9dee6",
+              background: "#f6f8fc",
+            }}
+          />
+
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            {!scanning ? (
+              <button type="button" onClick={startScanner} className="btn btn-primary">
+                Start Camera Scan
+              </button>
+            ) : (
+              <button type="button" onClick={stopScanner} className="btn btn-secondary">
+                Stop Scanner
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => handleLoad(patientId)}
+              disabled={loading}
+              className="btn btn-primary"
+            >
+              {loading ? "Loading…" : "Load Scanned Patient"}
+            </button>
+          </div>
+
+          <input
+            placeholder="Or paste QR value / Patient ID manually"
+            value={patientId}
+            onChange={(e) => setPatientId(e.target.value)}
+            className="form-input"
+            style={{ width: "100%", marginTop: 10 }}
+          />
+        </div>
+      )}
+
       <p className="form-hint" style={{ marginTop: 8 }}>
-        ⚠️ No emergency auto-access. Patient must be validated before proceeding.
+        ⚠️ QR only identifies patient. Consent is still mandatory before consultation access.
       </p>
 
       {error && <div className="alert alert-error" style={{ marginTop: 8 }}>{error}</div>}

@@ -1,4 +1,4 @@
-name: mobile_app
+name: health_passport
 description: "A new Flutter project."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
@@ -34,6 +34,18 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  qr_flutter: ^4.1.0
+  http: ^1.2.2
+  file_picker: ^10.3.10
+  url_launcher: ^6.3.2
+  google_fonts: ^6.2.1
+  local_auth: ^2.3.0
+  image_gallery_saver_plus: ^4.0.1
+  image_picker: ^1.1.2
+  path_provider: ^2.1.5
+  share_plus: ^10.0.2
+  shared_preferences: ^2.3.2
+  syncfusion_flutter_pdfviewer: ^27.2.5
 
 dev_dependencies:
   flutter_test:
@@ -45,17 +57,27 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
 # The following section is specific to Flutter packages.
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/app_icon.png
+  min_sdk_android: 21
+  remove_alpha_ios: true
+
 flutter:
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  assets:
+    - assets/onboarding/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

@@ -41,5 +41,6 @@ class ConsultationRecord(BaseModel):
     final_diagnosis: Optional[str] = None
     treatment_plan: Optional[str] = None
     medications_prescribed: Optional[List[str]] = None
+    medications_prescribed_details: Optional[List[dict]] = None
     follow_up_advice: Optional[str] = None
     follow_up_date: Optional[str] = None

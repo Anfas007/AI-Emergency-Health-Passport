@@ -18,16 +18,17 @@ export default function ConsentStatus({ patientId, onConsentChange }) {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [patientId]);
+  }, [patientId, onConsentChange]);
 
   const handleRequest = async () => {
     if (!patientId) return;
     setReqLoading(true);
     setError("");
     try {
-      await requestConsent(patientId);
-      setStatus({ requested: true });
-      alert("Consent request submitted. The patient will review and approve access.");
+      const res = await requestConsent(patientId);
+      const requestedFor = res?.request?.patient_id || patientId;
+      setStatus({ requested: true, patient_id: requestedFor });
+      alert(`Consent request submitted for Patient ID: ${requestedFor}`);
     } catch (e) {
       setError(e.message || "Request failed");
     } finally {
@@ -49,7 +50,7 @@ export default function ConsentStatus({ patientId, onConsentChange }) {
           ) : status && status.granted ? (
             <div className="text-success">✅ Granted • Expires: {status.expires_at || "—"}</div>
           ) : status && status.requested ? (
-            <div className="text-primary">⏳ Request pending</div>
+            <div className="text-primary">⏳ Request pending for {status.patient_id || patientId}</div>
           ) : (
             <div className="text-secondary">No consent granted</div>
           )}

@@ -7,11 +7,12 @@ from app.services.emergency_store import save_token, validate_token
 from app.services.database import (
     patients_collection, doctor_decisions_collection,
     doctor_notes_collection, emergency_sessions_collection,
-    shared_access_collection
+    shared_access_collection, patient_notifications_collection
 )
 from app.services.audit_service import log_emergency_access, get_all_logs, get_logs_for_patient, get_logs_for_doctor
 from app.services.auth_service import decode_access_token, get_current_doctor
 from app.services.clinical_rules_service import get_patient_risk_and_summary
+import uuid
 router = APIRouter(prefix="/emergency", tags=["Emergency"])
 
 # ── Pydantic models for new endpoints ──
@@ -52,54 +53,111 @@ def request_emergency_access(patient_id: str, role: str):
 #    - role == "hospital" → full medical record (auto-shared on CRITICAL)
 @router.get("/scan/{token}")
 def scan_emergency_qr(token: str, authorization: str = Header(None)):
-    token_data = validate_token(token)
-
-    if not token_data:
-        raise HTTPException(status_code=403, detail="Invalid or expired token")
-
-    role = token_data.get("role", "doctor")
-    patient_id = token_data["patient_id"]
-
-    if role == "hospital":
-        # Full medical record for authorized hospital
-        patient = patients_collection.find_one(
-            {"patient_id": patient_id},
-            {"_id": 0}
-        )
-    else:
-        # Limited critical info for doctor / paramedic
-        patient = patients_collection.find_one(
-            {"patient_id": patient_id},
-            {
-                "_id": 0,
-                "name": 1,
-                "blood_group": 1,
-                "allergies": 1,
-                "chronic_conditions": 1
-            }
-        )
+    raw_value = (token or "").strip()
+    token_data = validate_token(raw_value)
 
     # Determine actor (doctor/admin) from Authorization header when present
     actor_id = ""
+    actor_role = "doctor"
+    auth_payload = None
     try:
         if authorization:
             # header may be 'Bearer <token>'
             parts = authorization.split()
             tok = parts[1] if len(parts) > 1 else parts[0]
-            payload = decode_access_token(tok)
-            actor_id = payload.get("doctor_id") or payload.get("admin_id") or ""
+            auth_payload = decode_access_token(tok)
+            actor_id = auth_payload.get("doctor_id") or auth_payload.get("admin_id") or ""
+            actor_role = auth_payload.get("role", "doctor")
     except Exception:
-        actor_id = ""
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    # Backward compatible behavior:
+    # 1) If QR contains a generated emergency token, use token-based access.
+    # 2) If QR contains Patient ID (new flow), require authenticated doctor/admin.
+    if token_data:
+        role = token_data.get("role", "doctor")
+        patient_id = token_data["patient_id"]
+    else:
+        if not auth_payload:
+            raise HTTPException(status_code=403, detail="Invalid or expired token")
+
+        # Support common QR encodings: plain patient_id, "patient_id:<id>", or URL ending with id.
+        patient_id = raw_value
+        if patient_id.lower().startswith("patient_id:"):
+            patient_id = patient_id.split(":", 1)[1].strip()
+        elif patient_id.lower().startswith("http") and "/" in patient_id:
+            patient_id = patient_id.rstrip("/").split("/")[-1].strip()
+
+        if not patient_id:
+            raise HTTPException(status_code=400, detail="Invalid QR payload")
+
+        exists = patients_collection.find_one({"patient_id": patient_id}, {"_id": 1})
+        if not exists:
+            raise HTTPException(status_code=404, detail="Patient not found")
+
+        # Patient-ID QR scans from doctor dashboard should expose critical-only data.
+        role = "hospital" if actor_role in ["admin", "hospital_admin"] else "doctor"
+
+    # Core proof flow: doctor scan must resolve full profile + medical history.
+    patient = patients_collection.find_one(
+        {"patient_id": patient_id},
+        {"_id": 0}
+    )
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    profile = {
+        "patient_id": patient.get("patient_id", ""),
+        "name": patient.get("name", ""),
+        "age": patient.get("age", ""),
+        "gender": patient.get("gender", ""),
+        "blood_group": patient.get("blood_group", ""),
+        "phone": patient.get("phone", ""),
+        "email": patient.get("email", ""),
+    }
+    uploaded_records = patient.get("uploaded_records", []) or []
+    surgeries = [
+        r for r in uploaded_records
+        if str(r.get("type", "")).lower() == "surgery"
+    ]
+    medical_history = {
+        "past_diagnoses": patient.get("past_diagnoses", []) or [],
+        "surgeries": surgeries,
+        "medications": patient.get("medications", []) or [],
+        "uploaded_records": uploaded_records,
+        "previous_emergencies": patient.get("previous_emergencies", []) or [],
+    }
 
     # Audit log (include actor_id when available)
-    log_emergency_access(patient_id, role, actor_id=actor_id)
+    log_emergency_access(
+        patient_id,
+        role,
+        actor_id=actor_id,
+        actor_name=auth_payload.get("name", "") if auth_payload else "",
+    )
+
+    # Notify patient about emergency access event.
+    patient_notifications_collection.insert_one({
+        "notification_id": f"NOTIF-{uuid.uuid4().hex[:8].upper()}",
+        "patient_id": patient_id,
+        "doctor_id": actor_id,
+        "doctor_name": auth_payload.get("name", "") if auth_payload else "",
+        "hospital_code": auth_payload.get("hospital_code", "") if auth_payload else "",
+        "type": "emergency_access",
+        "message": "Emergency access alert: your emergency profile was accessed.",
+        "created_at": datetime.utcnow().isoformat(),
+        "read": False,
+    })
 
     ai_profile = get_patient_risk_and_summary(patient or {})
 
     return {
         "patient_id": patient_id,
-        "access_type": "full_record" if role == "hospital" else "critical_only",
+        "access_type": "full_record",
         "emergency_data": patient,
+        "profile": profile,
+        "medical_history": medical_history,
+        "allergies": patient.get("allergies", []) or [],
         "important_alerts": ai_profile.get("important_alerts", {}),
         "emergency_summary": ai_profile.get("emergency_summary", {})
     }

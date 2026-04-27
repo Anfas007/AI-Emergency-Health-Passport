@@ -58,28 +58,57 @@ export default function EmergencyQRAccess({ onPatientLoaded }) {
   };
 
   return (
-    <div className="step-card qr-section">
-      <h3 className="step-heading"><span className="step-number">🔐</span> Step 1 — Emergency QR Access</h3>
-      <p className="text-secondary" style={{ fontSize: 13, margin: "0 0 12px" }}>
-        Scan the patient's emergency QR code or paste a token to unlock their critical data.
-      </p>
-
-      <div id="ec-qr-reader" style={{ width: "100%", minHeight: scanning ? 260 : 0, borderRadius: "var(--radius)", overflow: "hidden", marginBottom: 10 }} />
-
-      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-        {!scanning
-          ? <button onClick={startScanner} className="btn btn-primary">📷 Start Camera</button>
-          : <button onClick={stopScanner} className="btn btn-danger">⏹ Stop Camera</button>
-        }
+    <div className="emergency-access-container">
+      {/* Card Title */}
+      <div className="emergency-access-header">
+        <h2 className="emergency-access-title">Emergency QR Access</h2>
+        <p className="emergency-access-description">
+          Position patient QR code within frame or input manually.
+        </p>
       </div>
 
-      <form onSubmit={e => { e.preventDefault(); stopScanner(); handleToken(manualToken); }} style={{ display: "flex", gap: 8 }}>
-        <input value={manualToken} onChange={e => setManualToken(e.target.value)} placeholder="Paste emergency token…" className="form-input" style={{ flex: 1 }} />
-        <button type="submit" disabled={loading} className="btn btn-success">{loading ? "Verifying…" : "Verify"}</button>
-      </form>
+      {/* QR Scan Area */}
+      <div className={`emergency-qr-area ${scanning ? 'scanning' : ''}`}>
+        <div id="ec-qr-reader" className="emergency-qr-reader" />
+        {!scanning && (
+          <div className="emergency-qr-placeholder">
+            <div className="emergency-qr-icon">📱</div>
+            <button onClick={startScanner} className="emergency-camera-btn">
+              Start Camera
+            </button>
+          </div>
+        )}
+        {scanning && (
+          <button onClick={stopScanner} className="emergency-stop-btn">
+            Stop Camera
+          </button>
+        )}
+      </div>
 
-      {loading && <div className="loading-bar" style={{ marginTop: 10 }}><div className="spinner" /><span>Verifying…</span></div>}
-      {error && <div className="alert alert-error" style={{ marginTop: 10 }}>❌ {error}</div>}
+      {/* Divider */}
+      <div className="emergency-divider">
+        <div className="emergency-divider-line"></div>
+        <span className="emergency-divider-text">OR MANUAL ENTRY</span>
+        <div className="emergency-divider-line"></div>
+      </div>
+
+      {/* Manual Input */}
+      <div className="emergency-manual-input">
+        <form onSubmit={e => { e.preventDefault(); stopScanner(); handleToken(manualToken); }} className="emergency-input-form">
+          <input
+            value={manualToken}
+            onChange={e => setManualToken(e.target.value)}
+            placeholder="Paste QR value / patient ID..."
+            className="emergency-input-field"
+          />
+          <button type="submit" disabled={loading} className="emergency-verify-btn">
+            {loading ? "Verifying..." : "Verify"}
+          </button>
+        </form>
+      </div>
+
+      {/* Error Message */}
+      {error && <div className="emergency-error">{error}</div>}
     </div>
   );
 }

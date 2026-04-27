@@ -2,13 +2,23 @@ from datetime import datetime
 from app.services.database import audit_logs_collection
 
 
-def log_emergency_access(patient_id, role, mode="EMERGENCY", detail="", actor_id: str = "", hospital_code: str = ""):
+def log_emergency_access(
+    patient_id,
+    role,
+    mode="EMERGENCY",
+    detail="",
+    actor_id: str = "",
+    hospital_code: str = "",
+    actor_name: str = "",
+):
     entry = {
         "patient_id": patient_id,
         "role": role,
         "mode": mode,
         "detail": detail,
         "actor_id": actor_id,
+        "doctor_id": actor_id,
+        "doctor_name": actor_name,
         "hospital_code": hospital_code,
         "timestamp": datetime.utcnow().isoformat()
     }
@@ -18,7 +28,7 @@ def log_emergency_access(patient_id, role, mode="EMERGENCY", detail="", actor_id
 def get_all_logs(limit=100):
     """Return the most recent emergency access audit logs."""
     logs = list(
-        audit_logs_collection.find({}, {"_id": 0})
+        audit_logs_collection.find({"mode": {"$ne": "CONSENT_DECISION"}}, {"_id": 0})
         .sort("timestamp", -1)
         .limit(limit)
     )
@@ -31,7 +41,7 @@ def get_logs_for_doctor(doctor_id: str, limit: int = 200):
         return []
     logs = list(
         audit_logs_collection.find(
-            {"actor_id": doctor_id}, {"_id": 0}
+            {"actor_id": doctor_id, "mode": {"$ne": "CONSENT_DECISION"}}, {"_id": 0}
         ).sort("timestamp", -1).limit(limit)
     )
     return logs
@@ -41,7 +51,7 @@ def get_logs_for_patient(patient_id):
     """Return audit logs for a specific patient."""
     logs = list(
         audit_logs_collection.find(
-            {"patient_id": patient_id}, {"_id": 0}
+            {"patient_id": patient_id, "mode": {"$ne": "CONSENT_DECISION"}}, {"_id": 0}
         ).sort("timestamp", -1)
     )
     return logs

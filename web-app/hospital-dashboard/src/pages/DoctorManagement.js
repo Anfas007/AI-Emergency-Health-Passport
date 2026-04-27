@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { fetchDoctors, registerDoctor, verifyDoctor, assignDoctor, revokeDoctor } from "../services/api";
+import { fetchDoctors, registerDoctor, assignDoctor, revokeDoctor } from "../services/api";
 
 export default function DoctorManagement({ onBack }) {
   const [data, setData] = useState({ hospital_doctors: [], legacy_doctors: [], unaffiliated_doctors: [] });
@@ -63,6 +63,9 @@ export default function DoctorManagement({ onBack }) {
 
   // Determine status for each doctor
   const getStatus = (doc) => {
+    if (doc.association_status === "active") {
+      return { label: "Active", cls: "badge-success" };
+    }
     if (doc.association_status === "revoked" || doc.association_status === "transferred") {
       return { label: "Inactive", cls: "badge-danger" };
     }

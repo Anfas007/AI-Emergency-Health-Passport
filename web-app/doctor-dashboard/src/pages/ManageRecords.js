@@ -47,60 +47,95 @@ export default function ManageRecords({ onBack }) {
   };
 
   return (
-    <div className="animate-fade-in">
-      <h2 className="page-title">Manage Medical Records</h2>
-      <p className="page-subtitle">Search for a patient and manage their medical records</p>
-
-      {/* Search */}
-      <div className="step-card">
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <input
-            className="form-input"
-            placeholder="Enter Patient ID"
-            value={patientId}
-            onChange={(e) => setPatientId(e.target.value)}
-            style={{ flex: 1 }}
-          />
-          <button onClick={handleFetch} disabled={loading} className="btn btn-primary">
-            {loading ? "Loading..." : "Load Patient"}
-          </button>
+    <div className="manage-records-page">
+      {/* Top Header */}
+      <header className="emergency-header">
+        <div className="emergency-header-left">
+          <div className="emergency-header-title">Health Passport</div>
+          <div className="emergency-header-subtitle">AI Emergency Health</div>
         </div>
-      </div>
+        <button onClick={onBack} className="emergency-dashboard-btn">Dashboard</button>
+      </header>
 
-      {error && <div className="alert alert-error">{error}</div>}
-      {success && <div className="alert alert-success">✅ {success}</div>}
+      {/* Main Content */}
+      <main className="manage-main">
+        <div className="manage-content">
+          {/* Main Heading */}
+          <div className="manage-heading-section">
+            <h1 className="manage-main-title">Manage Medical Records</h1>
+            <p className="manage-main-subtitle">
+              Search for a patient and manage their medical records with secure access controls.
+            </p>
+          </div>
 
-      {patientData && (
-        <>
-          <ConsentStatus patientId={patientId.trim()} onConsentChange={setConsentGranted} />
-
-          <div className="step-card">
-            <h3 className="step-heading"><span className="step-number">i</span> Patient Info</h3>
-            <div className="flex-between" style={{ padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
-              <span className="form-label" style={{ marginBottom: 0 }}>Name</span>
-              <span>{patientData.name || "N/A"}</span>
-            </div>
-            <div className="flex-between" style={{ padding: "8px 0" }}>
-              <span className="form-label" style={{ marginBottom: 0 }}>Blood Group</span>
-              <span style={{ color: "var(--emergency)", fontWeight: 700 }}>{patientData.blood_group || "N/A"}</span>
+          {/* Search Section */}
+          <div className="manage-search-card">
+            <div className="manage-search-form">
+              <input
+                className="manage-search-input"
+                placeholder="Enter Patient ID"
+                value={patientId}
+                onChange={(e) => setPatientId(e.target.value)}
+              />
+              <button onClick={handleFetch} disabled={loading} className="manage-search-btn">
+                {loading ? "Loading..." : "Load Patient"}
+              </button>
             </div>
           </div>
 
-          <MedicalHistoryViewer patientId={patientId.trim()} />
+          {/* Status Messages */}
+          {error && <div className="manage-error-banner">{error}</div>}
+          {success && <div className="manage-success-banner">✅ {success}</div>}
 
-          {consentGranted ? (
-            <MedicalRecordForm existingData={patientData} onSave={handleSave} saving={saving} />
-          ) : (
-            <div className="alert alert-warning">
-              <strong>⚠️ Patient consent required</strong>
-              <p style={{ margin: "6px 0 0", fontSize: 13 }}>
-                You cannot modify medical records without active patient consent.
-                Please request consent using the button above and wait for the patient to approve.
-              </p>
+          {/* Patient Data */}
+          {patientData && (
+            <div className="manage-patient-section">
+              {/* Consent Status */}
+              <div className="manage-consent-card">
+                <ConsentStatus patientId={patientId.trim()} onConsentChange={setConsentGranted} />
+              </div>
+
+              {/* Patient Info */}
+              <div className="manage-info-card">
+                <h3 className="manage-card-title">
+                  <span className="manage-icon">👤</span> Patient Information
+                </h3>
+                <div className="manage-info-grid">
+                  <div className="manage-info-row">
+                    <span className="manage-info-label">Name</span>
+                    <span className="manage-info-value">{patientData.name || "N/A"}</span>
+                  </div>
+                  <div className="manage-info-row">
+                    <span className="manage-info-label">Blood Group</span>
+                    <span className="manage-info-value manage-blood-group">{patientData.blood_group || "N/A"}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Medical History */}
+              <div className="manage-history-card">
+                <MedicalHistoryViewer patientId={patientId.trim()} />
+              </div>
+
+              {/* Record Management */}
+              {consentGranted ? (
+                <div className="manage-form-card">
+                  <MedicalRecordForm existingData={patientData} onSave={handleSave} saving={saving} />
+                </div>
+              ) : (
+                <div className="manage-consent-warning">
+                  <div className="manage-warning-icon">⚠️</div>
+                  <h3>Patient Consent Required</h3>
+                  <p>
+                    You cannot modify medical records without active patient consent.
+                    Please request consent using the button above and wait for the patient to approve.
+                  </p>
+                </div>
+              )}
             </div>
           )}
-        </>
-      )}
+        </div>
+      </main>
     </div>
   );
 }

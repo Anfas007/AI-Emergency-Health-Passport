@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
 import Login from "./pages/Login";
 import DoctorHome from "./pages/DoctorHome";
+import EmergencyConsultation from "./pages/EmergencyConsultation";
 import NormalConsultation from "./pages/NormalConsultation";
 import ManageRecords from "./pages/ManageRecords";
 import EmergencyLogs from "./pages/EmergencyLogs";
 import DoctorProfile from "./pages/DoctorProfile";
 import HospitalSelector from "./components/HospitalSelector";
-import { getToken, clearToken, fetchCurrentDoctor, getActiveHospital, getSavedHospitals, selectHospital } from "./services/api";
+import { getToken, clearToken, fetchCurrentDoctor, getActiveHospital, getSavedHospitals } from "./services/api";
 
 function App() {
   const [doctor, setDoctor] = useState(null);   // logged-in doctor object
@@ -119,14 +120,6 @@ function App() {
     );
   }
 
-  // ── Page titles ──
-  const PAGE_TITLES = {
-    normal: "Normal Consultation",
-    records: "Manage Records",
-    logs: "Emergency Logs",
-    profile: "Doctor Profile",
-  };
-
   // ── Render active page ──
   const renderPage = () => {
     if (!mode) {
@@ -138,9 +131,11 @@ function App() {
           hospitalCode={activeHospital}
           multiHospital={hospitals.length > 1}
           onSwitchHospital={handleSwitchHospital}
+          onLogout={handleLogout}
         />
       );
     }
+    if (mode === "emergency") return <EmergencyConsultation onBack={goHome} />;
     if (mode === "normal") return <NormalConsultation onBack={goHome} />;
     if (mode === "records") return <ManageRecords onBack={goHome} />;
     if (mode === "logs") return <EmergencyLogs onBack={goHome} />;
@@ -150,46 +145,6 @@ function App() {
 
   return (
     <div>
-      {/* Top Navigation */}
-      <nav className="top-nav">
-        <div className="top-nav-brand">
-          <div className="top-nav-brand-icon">🏥</div>
-          <div>
-            <div className="top-nav-title">
-              {mode ? PAGE_TITLES[mode] || "Dashboard" : "Doctor Dashboard"}
-            </div>
-            <div className="top-nav-subtitle">AI Emergency Health Passport</div>
-          </div>
-        </div>
-
-        <div className="top-nav-actions">
-          {activeHospitalName && (
-            <div className="hospital-badge">
-              <span>🏨</span>
-              <span>{activeHospitalName}</span>
-              {hospitals.length > 1 && (
-                <button onClick={handleSwitchHospital} className="btn btn-sm btn-primary" style={{ marginLeft: 6, padding: "3px 10px", fontSize: 11 }}>
-                  Switch
-                </button>
-              )}
-            </div>
-          )}
-          {mode && (
-            <button onClick={goHome} className="btn btn-outline btn-sm">
-              ← Dashboard
-            </button>
-          )}
-          <button
-            onClick={() => setMode("profile")}
-            className="avatar avatar-sm"
-            style={{ cursor: "pointer", border: "none" }}
-            title="Profile"
-          >
-            {(doctor.name || "D").replace("Dr. ", "").charAt(0)}
-          </button>
-        </div>
-      </nav>
-
       {/* Main Content */}
       <div className="main-content animate-fade-in" key={mode || "home"}>
         {renderPage()}

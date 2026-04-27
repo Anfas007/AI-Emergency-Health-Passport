@@ -7,7 +7,6 @@ export default function Sidebar({ activeMode, onSelect, hospitalName }) {
     { key: null, icon: "📊", label: "Dashboard Overview" },
     { section: "Management" },
     { key: "doctors", icon: "🏥", label: "Hospital Management" },
-    { key: "patients", icon: "👥", label: "Patient Management" },
     { section: "Monitoring" },
     { key: "audit-compliance", icon: "📋", label: "Audit Logs & Compliance" },
     { section: "Settings" },
@@ -18,7 +17,7 @@ export default function Sidebar({ activeMode, onSelect, hospitalName }) {
     <aside className="sidebar">
       {/* Brand */}
       <div className="sidebar-brand">
-        <div className="sidebar-brand-icon">🏥</div>
+        <div className="sidebar-brand-icon">🛡️</div>
         <div className="sidebar-brand-text">
           Emergency
           <small>Health Passport</small>
@@ -31,12 +30,12 @@ export default function Sidebar({ activeMode, onSelect, hospitalName }) {
           padding: "12px 20px",
           borderBottom: "1px solid rgba(255,255,255,0.06)",
           fontSize: 12,
-          color: "#94A3B8",
+          color: "#000000",
         }}>
           <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4, color: "#64748B" }}>
             Hospital
           </div>
-          <div style={{ color: "#E2E8F0", fontWeight: 600, fontSize: 13 }}>
+          <div style={{ color: "#01050a", fontWeight: 600, fontSize: 13 }}>
             {hospitalName}
           </div>
         </div>

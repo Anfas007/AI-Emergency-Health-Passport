@@ -267,9 +267,9 @@ def register_doctor(
         "hospital_code": hospital_code,        # primary / last assigned
         "department": department,
         "role_level": role,
-        "verified": False,
-        "verified_by": "",
-        "verified_at": "",
+        "verified": True,
+        "verified_by": current["admin_id"],
+        "verified_at": datetime.utcnow().isoformat(),
         "created_at": datetime.utcnow().isoformat(),
     }
     doctors_collection.insert_one(doctor)
@@ -304,7 +304,7 @@ def register_doctor(
         "name": name,
         "hospital_code": hospital_code,
         "association_id": assoc["association_id"],
-        "verified": False,
+        "verified": True,
     }
 
 

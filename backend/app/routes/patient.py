@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.models.patient import Patient, MedicalRecordUpdate, ConsultationRecord
 from app.services.database import (
-    patients_collection, consultations_collection, patient_notifications_collection
+    patients_collection, consultations_collection, patient_notifications_collection,
+    consent_collection, patient_accounts_collection, consent_requests_collection
 )
 from app.services.patient_id_generator import generate_patient_id
 from app.services.audit_service import log_emergency_access
@@ -11,6 +12,155 @@ from app.services.clinical_rules_service import get_patient_risk_and_summary, ge
 import uuid
 
 router = APIRouter(prefix="/patients", tags=["Patients"])
+
+
+def _get_active_consent(patient_id: str):
+    consent = consent_collection.find_one(
+        {"patient_id": patient_id, "granted": True},
+        sort=[("created_at", -1)]
+    )
+    if not consent:
+        return None
+    expires_at = consent.get("expires_at")
+    if expires_at and expires_at < datetime.utcnow():
+        return None
+    return consent
+
+
+def _normalize_patient_id(patient_id: str) -> str:
+    """Map legacy patient identifiers to canonical patient_accounts.patient_id when possible."""
+    pid = (patient_id or "").strip()
+    if not pid:
+        return pid
+
+    # Already canonical
+    account = patient_accounts_collection.find_one({"patient_id": pid}, {"_id": 0, "patient_id": 1})
+    if account:
+        return pid
+
+    # Legacy patient record may carry different patient_id but same email
+    patient = patients_collection.find_one({"patient_id": pid}, {"_id": 0, "email": 1})
+    email = (patient or {}).get("email", "").strip().lower()
+    if email:
+        mapped = patient_accounts_collection.find_one({"email": email}, {"_id": 0, "patient_id": 1})
+        if mapped:
+            return mapped["patient_id"]
+
+    return pid
+
+
+def _get_active_consent_for_ids(patient_ids: list[str]):
+    """Return the first active consent found across candidate patient IDs."""
+    for pid in patient_ids:
+        consent = _get_active_consent(pid)
+        if consent:
+            return consent
+    return None
+
+
+def _build_patient_lookup_context(patient_id: str):
+    """Resolve mixed legacy/canonical identifiers into lookup candidates and a patient document."""
+    raw_pid = (patient_id or "").strip()
+    canonical_pid = _normalize_patient_id(raw_pid)
+
+    candidate_ids = []
+    for pid in [raw_pid, canonical_pid]:
+        if pid and pid not in candidate_ids:
+            candidate_ids.append(pid)
+
+    account = patient_accounts_collection.find_one(
+        {"patient_id": canonical_pid},
+        {"_id": 0, "email": 1}
+    ) if canonical_pid else None
+    email = ((account or {}).get("email") or "").strip().lower()
+
+    if email:
+        linked_profiles = list(
+            patients_collection.find(
+                {"email": email},
+                {"_id": 0, "patient_id": 1}
+            )
+        )
+        for profile in linked_profiles:
+            linked_pid = (profile.get("patient_id") or "").strip()
+            if linked_pid and linked_pid not in candidate_ids:
+                candidate_ids.append(linked_pid)
+
+    patient = None
+    if candidate_ids:
+        patient = patients_collection.find_one(
+            {"patient_id": {"$in": candidate_ids}},
+            {"_id": 0}
+        )
+    if not patient and email:
+        patient = patients_collection.find_one({"email": email}, {"_id": 0})
+
+    resolved_pid = (patient or {}).get("patient_id") or canonical_pid or raw_pid
+    if resolved_pid and resolved_pid not in candidate_ids:
+        candidate_ids.append(resolved_pid)
+
+    return {
+        "raw_pid": raw_pid,
+        "canonical_pid": canonical_pid,
+        "resolved_pid": resolved_pid,
+        "candidate_ids": candidate_ids,
+        "patient": patient,
+        "email": email,
+    }
+
+
+def _ensure_pending_consent_request(patient_id: str, current: dict, reason: str = ""):
+    """Create one pending consent request for this doctor+patient pair if absent."""
+    pid = _normalize_patient_id(patient_id)
+    doctor_id = current.get("doctor_id", "")
+
+    if not pid or not doctor_id:
+        return None, False
+
+    account_exists = patient_accounts_collection.find_one({"patient_id": pid}, {"_id": 1})
+    if not account_exists:
+        return None, False
+
+    existing = consent_requests_collection.find_one(
+        {
+            "patient_id": pid,
+            "requested_by": doctor_id,
+            "status": "requested",
+        },
+        {"_id": 0},
+        sort=[("created_at", -1)],
+    )
+    if existing:
+        return existing, False
+
+    req = {
+        "request_id": f"CREQ-{uuid.uuid4().hex[:8].upper()}",
+        "patient_id": pid,
+        "requested_by": doctor_id,
+        "hospital_code": current.get("hospital_code", ""),
+        "hospital_name": current.get("hospital_name", ""),
+        "status": "requested",
+        "created_at": datetime.utcnow(),
+    }
+    consent_requests_collection.insert_one(req)
+
+    reason_text = f" Reason: {reason}" if reason else ""
+    patient_notifications_collection.insert_one({
+        "notification_id": f"N-{uuid.uuid4().hex[:8].upper()}",
+        "patient_id": pid,
+        "type": "consent_request",
+        "message": (
+            f"Dr. {current.get('name', 'Doctor')} requested consent for normal consultation"
+            f" ({req['request_id']}): {reason}.{reason_text}"
+        ).strip(),
+        "request_id": req["request_id"],
+        "hospital_code": current.get("hospital_code", ""),
+        "hospital_name": current.get("hospital_name", ""),
+        "read": False,
+        "created_at": datetime.utcnow().isoformat(),
+    })
+
+    return req, True
 
 @router.post("/register")
 def register_patient(patient: Patient):
@@ -28,7 +178,7 @@ def register_patient(patient: Patient):
 
 
 @router.get("/history/{patient_id}")
-def get_patient_history(patient_id: str):
+def get_patient_history(patient_id: str, current: dict = Depends(get_current_doctor)):
     """Fetch full medical history for a patient."""
     patient = patients_collection.find_one(
         {"patient_id": patient_id},
@@ -36,6 +186,37 @@ def get_patient_history(patient_id: str):
     )
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
+
+    consent = _get_active_consent(patient_id)
+    if not consent:
+        _ensure_pending_consent_request(
+            patient_id,
+            current,
+            reason="Normal history access was blocked until you approve.",
+        )
+        log_emergency_access(
+            patient_id=patient_id,
+            role="doctor",
+            mode="CONSENT_BLOCKED",
+            detail="Normal history access denied: consent missing/expired",
+            actor_id=current.get("doctor_id", ""),
+            hospital_code=current.get("hospital_code", ""),
+            actor_name=current.get("name", ""),
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="Patient consent is required for normal consultation access."
+        )
+
+    log_emergency_access(
+        patient_id=patient_id,
+        role="doctor",
+        mode="NORMAL_CONSULTATION",
+        detail="Normal history access allowed by consent",
+        actor_id=current.get("doctor_id", ""),
+        hospital_code=current.get("hospital_code", ""),
+        actor_name=current.get("name", ""),
+    )
 
     ai_profile = get_patient_risk_and_summary(patient)
 
@@ -105,19 +286,83 @@ def update_medical_records(patient_id: str, data: MedicalRecordUpdate, current: 
 
 
 @router.get("/request-access/{patient_id}")
-def request_normal_access(patient_id: str):
+def request_normal_access(patient_id: str, current: dict = Depends(get_current_doctor)):
     """Normal (non-emergency) access: returns limited patient summary."""
-    patient = patients_collection.find_one(
-        {"patient_id": patient_id},
-        {"_id": 0}
-    )
+    lookup = _build_patient_lookup_context(patient_id)
+    pid = lookup["resolved_pid"]
+    patient = lookup["patient"] or {}
+
+    # Allow normal consultation bootstrap from patient account even if medical profile doc is missing.
     if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
+        account = patient_accounts_collection.find_one(
+            {"patient_id": pid},
+            {"_id": 0, "patient_id": 1, "name": 1, "age": 1, "gender": 1, "email": 1}
+        )
+        if not account:
+            raise HTTPException(status_code=404, detail="Patient not found")
+        patient = {
+            "patient_id": account.get("patient_id", pid),
+            "name": account.get("name", ""),
+            "age": account.get("age", ""),
+            "gender": account.get("gender", ""),
+            "email": account.get("email", ""),
+            "blood_group": "",
+            "allergies": [],
+            "chronic_conditions": [],
+            "medications": [],
+        }
+        pid = patient.get("patient_id", pid)
+        if pid not in lookup["candidate_ids"]:
+            lookup["candidate_ids"].append(pid)
+
+    consent = _get_active_consent_for_ids(lookup["candidate_ids"])
+    if not consent:
+        _ensure_pending_consent_request(
+            lookup["canonical_pid"] or pid,
+            current,
+            reason="Normal access was blocked until you approve.",
+        )
+        log_emergency_access(
+            patient_id=pid,
+            role="doctor",
+            mode="CONSENT_BLOCKED",
+            detail="Normal access denied: consent missing/expired",
+            actor_id=current.get("doctor_id", ""),
+            hospital_code=current.get("hospital_code", ""),
+            actor_name=current.get("name", ""),
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="Patient consent is required. Request consent from the patient first."
+        )
+
+    log_emergency_access(
+        patient_id=pid,
+        role="doctor",
+        mode="NORMAL_CONSULTATION",
+        detail="Normal access allowed by consent",
+        actor_id=current.get("doctor_id", ""),
+        hospital_code=current.get("hospital_code", ""),
+        actor_name=current.get("name", ""),
+    )
+
+    # Notify patient that a doctor accessed normal consultation data.
+    patient_notifications_collection.insert_one({
+        "notification_id": f"NOTIF-{uuid.uuid4().hex[:8].upper()}",
+        "patient_id": pid,
+        "doctor_id": current.get("doctor_id", ""),
+        "doctor_name": current.get("name", ""),
+        "hospital_code": current.get("hospital_code", ""),
+        "type": "doctor_access",
+        "message": f"Dr. {current.get('name', 'Doctor')} accessed your records for normal consultation.",
+        "created_at": datetime.utcnow().isoformat(),
+        "read": False,
+    })
 
     ai_profile = get_patient_risk_and_summary(patient)
 
     return {
-        "patient_id": patient_id,
+        "patient_id": pid,
         "name": patient.get("name", ""),
         "age": patient.get("age", ""),
         "gender": patient.get("gender", ""),
@@ -152,24 +397,21 @@ def request_additional_consent(patient_id: str, current: dict = Depends(get_curr
     """Doctor requests additional normal-access consent for a patient.
 
     Creates a consent request record for review by the patient.
-    NOTE: Patient app module is not yet built — in production the patient
-    will approve/deny this request via their mobile app.
     """
-    from app.services.database import consent_requests_collection
+    req, created = _ensure_pending_consent_request(
+        patient_id,
+        current,
+    )
 
-    doctor_id = current.get("doctor_id")
-    req = {
-        "request_id": f"CREQ-{uuid.uuid4().hex[:8].upper()}",
-        "patient_id": patient_id,
-        "requested_by": doctor_id,
-        "hospital_code": current.get("hospital_code", ""),
-        "hospital_name": current.get("hospital_name", ""),
-        "status": "requested",
-        "created_at": datetime.utcnow(),
-    }
-    consent_requests_collection.insert_one(req)
+    if not req:
+        raise HTTPException(status_code=404, detail="Patient not found for consent request")
 
-    return {"status": "requested", "request": {k: v for k, v in req.items() if k != "_id"}}
+    response_req = {k: v for k, v in req.items() if k != "_id"}
+
+    if response_req.get("created_at") and hasattr(response_req["created_at"], "isoformat"):
+        response_req["created_at"] = response_req["created_at"].isoformat()
+
+    return {"status": "requested" if created else "already_requested", "request": response_req}
 
 
 
@@ -225,6 +467,27 @@ def save_consultation(record: ConsultationRecord, current: dict = Depends(get_cu
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
 
+    consent = _get_active_consent(record.patient_id)
+    if not consent:
+        _ensure_pending_consent_request(
+            record.patient_id,
+            current,
+            reason="Saving consultation was blocked until you approve.",
+        )
+        log_emergency_access(
+            patient_id=record.patient_id,
+            role="doctor",
+            mode="CONSENT_BLOCKED",
+            detail="Save consultation denied: consent missing/expired",
+            actor_id=current.get("doctor_id", ""),
+            hospital_code=current.get("hospital_code", ""),
+            actor_name=current.get("name", ""),
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="Patient consent is required before saving normal consultation."
+        )
+
     doctor_id = current.get("doctor_id", "")
     doctor_name = current.get("name", "")
     hospital_code = current.get("hospital_code", "")
@@ -269,6 +532,7 @@ def save_consultation(record: ConsultationRecord, current: dict = Depends(get_cu
         # FHIR MedicationRequest
         "medication_request": {
             "medications_prescribed": record.medications_prescribed or [],
+            "medications_prescribed_details": record.medications_prescribed_details or [],
             "treatment_plan": record.treatment_plan or "",
         },
         # Follow-up
@@ -291,13 +555,7 @@ def save_consultation(record: ConsultationRecord, current: dict = Depends(get_cu
              "$set": {"records_updated_at": now.isoformat()}}
         )
 
-    # Update medications in patient record if prescribed
-    if record.medications_prescribed:
-        patients_collection.update_one(
-            {"patient_id": record.patient_id},
-            {"$set": {"medications": record.medications_prescribed,
-                       "records_updated_at": now.isoformat()}}
-        )
+    # Do not overwrite patient-managed regular medications with consultation prescriptions.
 
     # Audit log
     log_emergency_access(
@@ -307,6 +565,7 @@ def save_consultation(record: ConsultationRecord, current: dict = Depends(get_cu
         detail=f"Consultation {consultation_id} saved by Dr. {doctor_name} at {hospital_name or 'unspecified'}",
         actor_id=doctor_id,
         hospital_code=hospital_code,
+        actor_name=doctor_name,
     )
 
     return {
@@ -322,9 +581,32 @@ def save_consultation(record: ConsultationRecord, current: dict = Depends(get_cu
 @router.get("/consultations/{patient_id}")
 def get_consultations(patient_id: str, current: dict = Depends(get_current_doctor)):
     """Return all consultation records for a patient (most recent first)."""
+    lookup = _build_patient_lookup_context(patient_id)
+    pid = lookup["resolved_pid"]
+    consent = _get_active_consent_for_ids(lookup["candidate_ids"])
+    if not consent:
+        _ensure_pending_consent_request(
+            lookup["canonical_pid"] or pid,
+            current,
+            reason="Viewing consultation history was blocked until you approve.",
+        )
+        log_emergency_access(
+            patient_id=pid,
+            role="doctor",
+            mode="CONSENT_BLOCKED",
+            detail="Consultation history denied: consent missing/expired",
+            actor_id=current.get("doctor_id", ""),
+            hospital_code=current.get("hospital_code", ""),
+            actor_name=current.get("name", ""),
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="Patient consent is required before viewing consultation history."
+        )
+
     records = list(
         consultations_collection.find(
-            {"patient_id": patient_id}, {"_id": 0}
+            {"patient_id": {"$in": lookup["candidate_ids"]}}, {"_id": 0}
         ).sort("timestamp", -1).limit(50)
     )
     # Normalize datetime objects
@@ -335,15 +617,83 @@ def get_consultations(patient_id: str, current: dict = Depends(get_current_docto
     # Audit log
     doctor_id = current.get("doctor_id", "")
     log_emergency_access(
-        patient_id=patient_id,
+        patient_id=pid,
         role="doctor",
         mode="NORMAL_CONSULTATION",
         detail=f"Viewed consultation history ({len(records)} records)",
         actor_id=doctor_id,
         hospital_code=current.get("hospital_code", ""),
+        actor_name=current.get("name", ""),
     )
 
-    return {"patient_id": patient_id, "consultations": records}
+    return {"patient_id": pid, "consultations": records}
+
+
+@router.get("/medical-history/{patient_id}")
+def get_medical_history(patient_id: str, current: dict = Depends(get_current_doctor)):
+    """Return patient's uploaded medical history records."""
+    lookup = _build_patient_lookup_context(patient_id)
+    pid = lookup["resolved_pid"]
+    consent = _get_active_consent_for_ids(lookup["candidate_ids"])
+    if not consent:
+        _ensure_pending_consent_request(
+            lookup["canonical_pid"] or pid,
+            current,
+            reason="Viewing medical history was blocked until you approve.",
+        )
+        log_emergency_access(
+            patient_id=pid,
+            role="doctor",
+            mode="CONSENT_BLOCKED",
+            detail="Medical history denied: consent missing/expired",
+            actor_id=current.get("doctor_id", ""),
+            hospital_code=current.get("hospital_code", ""),
+            actor_name=current.get("name", ""),
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="Patient consent is required before viewing medical history."
+        )
+
+    patient = lookup["patient"] or {}
+    if not patient:
+        return {
+            "patient_id": pid,
+            "medical_history": {
+                "past_diagnoses": [],
+                "surgeries": [],
+                "medications": [],
+                "uploaded_records": [],
+                "previous_emergencies": [],
+            },
+        }
+
+    uploaded_records = patient.get("uploaded_records", []) or []
+    surgeries = [
+        r for r in uploaded_records
+        if str(r.get("type", "")).lower() == "surgery"
+    ]
+    medical_history = {
+        "past_diagnoses": patient.get("past_diagnoses", []) or [],
+        "surgeries": surgeries,
+        "medications": patient.get("medications", []) or [],
+        "uploaded_records": uploaded_records,
+        "previous_emergencies": patient.get("previous_emergencies", []) or [],
+    }
+
+    # Audit log
+    doctor_id = current.get("doctor_id", "")
+    log_emergency_access(
+        patient_id=pid,
+        role="doctor",
+        mode="NORMAL_CONSULTATION",
+        detail="Viewed patient medical history",
+        actor_id=doctor_id,
+        hospital_code=current.get("hospital_code", ""),
+        actor_name=current.get("name", ""),
+    )
+
+    return {"patient_id": pid, "medical_history": medical_history}
 
 
 @router.post("/notify/{patient_id}")
@@ -385,6 +735,7 @@ def notify_patient(patient_id: str, payload: dict, current: dict = Depends(get_c
         detail=f"Patient notified about consultation {payload.get('consultation_id', '')}",
         actor_id=doctor_id,
         hospital_code=current.get("hospital_code", ""),
+        actor_name=doctor_name,
     )
 
     return {"status": "sent", "notification": {k: v for k, v in notification.items() if k != "_id"}}

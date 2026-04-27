@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { fetchDashboardStats, fetchEnhancedAuditLogs } from "../services/api";
+import { formatLocalDate, formatLocalTime, parseUtcToLocalDate } from "../utils/time";
 
 export default function HospitalHome({ onSelect, adminName }) {
   const [stats, setStats] = useState(null);
@@ -23,20 +24,19 @@ export default function HospitalHome({ onSelect, adminName }) {
   const fmt = (n) => (n != null ? n.toLocaleString() : "—");
 
   const formatTime = (ts) => {
-    if (!ts) return "—";
-    const d = new Date(ts);
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return formatLocalTime(ts);
   };
 
   const formatDate = (ts) => {
     if (!ts) return "";
-    const d = new Date(ts);
+    const d = parseUtcToLocalDate(ts);
+    if (!d) return "";
     const today = new Date();
     if (d.toDateString() === today.toDateString()) return "Today";
     const yesterday = new Date(today);
     yesterday.setDate(today.getDate() - 1);
     if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-    return d.toLocaleDateString([], { month: "short", day: "numeric" });
+    return formatLocalDate(ts, { month: "short", day: "numeric", year: undefined });
   };
 
   const buildEvent = (log) => {

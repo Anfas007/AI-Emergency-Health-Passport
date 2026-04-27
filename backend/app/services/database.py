@@ -12,6 +12,7 @@ doctor_notes_collection = db["doctor_notes"]
 audit_logs_collection = db["audit_logs"]
 emergency_sessions_collection = db["emergency_sessions"]
 doctors_collection = db["doctors"]
+patient_accounts_collection = db["patient_accounts"]
 # Collection for storing short-lived emergency tokens (QR access)
 emergency_tokens_collection = db["emergency_tokens"]
 # Collection for tracking auto-shared access (AI CRITICAL → hospital)
@@ -32,6 +33,10 @@ patient_notifications_collection = db["patient_notifications"]
 
 def ensure_indexes():
     """Create TTL and other indexes. Safe to call on every startup."""
+    # Unique patient email for patient-auth signup/login
+    patient_accounts_collection.create_index(
+        "email", unique=True, name="uniq_patient_email"
+    )
     # Auto-delete expired emergency tokens
     emergency_tokens_collection.create_index(
         "expires_at", expireAfterSeconds=0, name="ttl_expires_at"
