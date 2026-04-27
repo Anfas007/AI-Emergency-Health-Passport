@@ -20,6 +20,8 @@ else:
     else:
         db = client["ai_emergency_health_passport"]
 
+print(f"[startup] Mongo database selected: {db.name}")
+
 patients_collection = db["patients"]
 doctor_decisions_collection = db["doctor_decisions"]
 doctor_notes_collection = db["doctor_notes"]
