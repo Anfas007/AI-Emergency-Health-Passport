@@ -45,7 +45,11 @@ app.add_middleware(
 
 # Create TTL indexes on startup (idempotent)
 from app.services.database import ensure_indexes
-ensure_indexes()
+try:
+    ensure_indexes()
+except Exception as exc:
+    # Keep API process alive so /health and diagnostics remain accessible.
+    print(f"[startup] ensure_indexes failed: {exc}")
 
 app.include_router(emergency.router)
 app.include_router(patient.router)
