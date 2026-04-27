@@ -8,20 +8,26 @@ import sys
 # ENVIRONMENT CONFIGURATION FOR LOCAL & RENDER DEPLOYMENT
 # ──────────────────────────────────────────────────────────────────────
 
-# Load .env file from backend directory (only in local development)
-# In production (Render), environment variables come from Render dashboard
+# Load environment variables from a local-only file first.
+# Production on Render should rely on dashboard-provided env vars only.
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-ENV_PATH = os.path.join(BASE_DIR, ".env")
+LOCAL_ENV_PATHS = [
+    os.path.join(BASE_DIR, ".env.local"),
+    os.path.join(BASE_DIR, ".env"),
+]
 
-# load_dotenv is safe even if .env doesn't exist (production scenario)
-# On Render, .env won't exist and vars come from environment
-if os.path.exists(ENV_PATH):
-    load_dotenv(dotenv_path=ENV_PATH)
-    print(f"[startup] Loaded .env from local file: {ENV_PATH}")
-else:
-    # In production on Render, .env won't exist - use environment vars
-    load_dotenv()  # Load from system environment
-    print("[startup] .env file not found; using Render environment variables")
+loaded_env = False
+for env_path in LOCAL_ENV_PATHS:
+    if os.path.exists(env_path):
+        load_dotenv(dotenv_path=env_path)
+        print(f"[startup] Loaded local env file: {env_path}")
+        loaded_env = True
+        break
+
+if not loaded_env:
+    # On Render, neither local file should exist - use system environment vars.
+    load_dotenv()
+    print("[startup] No local env file found; using Render environment variables")
 
 # ──────────────────────────────────────────────────────────────────────
 # MONGODB CONNECTION SETUP
