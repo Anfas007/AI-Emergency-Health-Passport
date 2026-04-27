@@ -2,9 +2,23 @@ from pymongo import MongoClient
 import os
 
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
+MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "").strip()
 
 client = MongoClient(MONGO_URL)
-db = client["ai_emergency_health_passport"]
+
+if MONGO_DB_NAME:
+    db = client[MONGO_DB_NAME]
+else:
+    # Respect database name from Mongo URI when present.
+    try:
+        default_db = client.get_default_database()
+    except Exception:
+        default_db = None
+
+    if default_db is not None:
+        db = default_db
+    else:
+        db = client["ai_emergency_health_passport"]
 
 patients_collection = db["patients"]
 doctor_decisions_collection = db["doctor_decisions"]
