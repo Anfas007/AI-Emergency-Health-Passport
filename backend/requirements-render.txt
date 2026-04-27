@@ -1,0 +1,69 @@
+# AI Emergency Health Passport Backend - Production Requirements
+# Optimized for Render.com deployment
+# Install with: pip install -r requirements-render.txt
+
+# ─────────────────────────────────────────────────────────────────────
+# CORE WEB FRAMEWORK & SERVER
+# ─────────────────────────────────────────────────────────────────────
+fastapi==0.129.0         # Modern async Python web framework
+uvicorn[standard]==0.40.0  # ASGI server for production deployment with uvloop, httptools
+starlette==0.52.1        # FastAPI dependency (included for explicit control)
+
+# ─────────────────────────────────────────────────────────────────────
+# DATABASE & CONNECTIVITY
+# ─────────────────────────────────────────────────────────────────────
+pymongo==4.16.0          # MongoDB Python driver
+dnspython==2.8.0         # Required for MongoDB SRV connection strings (MongoDB Atlas)
+
+# ─────────────────────────────────────────────────────────────────────
+# AUTHENTICATION & SECURITY
+# ─────────────────────────────────────────────────────────────────────
+PyJWT==2.11.0            # JWT token creation and validation
+bcrypt==5.0.0            # Password hashing (secure alternative to plain hashlib)
+
+# ─────────────────────────────────────────────────────────────────────
+# CONFIGURATION & ENVIRONMENT
+# ─────────────────────────────────────────────────────────────────────
+python-dotenv==1.2.1     # Load environment variables from .env files
+
+# ─────────────────────────────────────────────────────────────────────
+# FILE & DATA HANDLING
+# ─────────────────────────────────────────────────────────────────────
+python-multipart==0.0.22  # Support for multipart/form-data (file uploads)
+pydantic==2.12.5         # FastAPI dependency for request/response validation
+
+# ─────────────────────────────────────────────────────────────────────
+# UTILITIES & COMMON DEPENDENCIES
+# ─────────────────────────────────────────────────────────────────────
+typing-extensions==4.15.0  # Backport of typing features for Python 3.11+
+
+# ─────────────────────────────────────────────────────────────────────
+# OPTIONAL: AI/ML MODULES (included for rule-based AI features)
+# Uncomment to enable: allergies, drug interactions, medical summary
+# ─────────────────────────────────────────────────────────────────────
+qrcode==8.2              # QR code generation for emergency access
+pillow==12.1.1           # Image library for QR codes
+
+# ─────────────────────────────────────────────────────────────────────
+# NOTES FOR RENDER DEPLOYMENT
+# ─────────────────────────────────────────────────────────────────────
+# 1. MongoDB Atlas Connection:
+#    - Set MONGO_URL in Render environment variables
+#    - Format: mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority
+#    - Create Atlas account at: https://www.mongodb.com/cloud/atlas
+#
+# 2. JWT Secret:
+#    - Generate with: python -c \"import secrets; print(secrets.token_urlsafe(32))\"
+#    - Set JWT_SECRET in Render environment variables (mark as secret)
+#
+# 3. Build Time:
+#    - Free tier can take 5-10 minutes for initial deployment
+#    - Subsequent rebuilds are faster with pip cache
+#
+# 4. Port Binding:
+#    - Render injects $PORT environment variable (usually 10000)
+#    - start command uses: uvicorn main:app --host 0.0.0.0 --port $PORT
+#
+# 5. Health Check:
+#    - Render checks GET /health endpoint every 10 seconds
+#    - Endpoint is configured in render.yaml

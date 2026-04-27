@@ -1,24 +1,81 @@
 from pymongo import MongoClient
+from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 from dotenv import load_dotenv
 import os
+import sys
 
-# Force load backend/.env
+# ──────────────────────────────────────────────────────────────────────
+# ENVIRONMENT CONFIGURATION FOR LOCAL & RENDER DEPLOYMENT
+# ──────────────────────────────────────────────────────────────────────
+
+# Load .env file from backend directory (only in local development)
+# In production (Render), environment variables come from Render dashboard
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 ENV_PATH = os.path.join(BASE_DIR, ".env")
-load_dotenv(dotenv_path=ENV_PATH)
+
+# load_dotenv is safe even if .env doesn't exist (production scenario)
+# On Render, .env won't exist and vars come from environment
+if os.path.exists(ENV_PATH):
+    load_dotenv(dotenv_path=ENV_PATH)
+    print(f"[startup] Loaded .env from local file: {ENV_PATH}")
+else:
+    # In production on Render, .env won't exist - use environment vars
+    load_dotenv()  # Load from system environment
+    print("[startup] .env file not found; using Render environment variables")
+
+# ──────────────────────────────────────────────────────────────────────
+# MONGODB CONNECTION SETUP
+# ──────────────────────────────────────────────────────────────────────
 
 MONGO_URL = os.getenv("MONGO_URL")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "ai_emergency_health_passport").strip()
 
+# Validate required environment variables
 if not MONGO_URL:
-    raise RuntimeError("MONGO_URL not found. Check backend/.env file.")
+    error_msg = (
+        "❌ MONGO_URL not set!\n"
+        "   Local development: Create backend/.env with MONGO_URL=...\n"
+        "   Render deployment: Set MONGO_URL in Render dashboard → Environment tab\n"
+        "   MongoDB Atlas: https://www.mongodb.com/cloud/atlas"
+    )
+    print(error_msg, file=sys.stderr)
+    raise RuntimeError(error_msg)
 
-client = MongoClient(MONGO_URL)
-db = client[MONGO_DB_NAME]
+# Connect to MongoDB with error handling
+try:
+    # serverSelectionTimeoutMS=5000 waits 5 seconds for initial connection
+    # This prevents long hangs during startup if MongoDB is unavailable
+    client = MongoClient(
+        MONGO_URL,
+        serverSelectionTimeoutMS=5000,
+        connectTimeoutMS=10000,
+        retryWrites=True
+    )
+    
+    # Force connection attempt immediately to catch errors early
+    client.admin.command("ping")
+    db = client[MONGO_DB_NAME]
+    
+    print(f"[startup] ✅ MongoDB connected successfully")
+    print(f"[startup] 📊 Database: {db.name}")
+    print(f"[startup] 🔗 Connection string: {MONGO_URL[:50]}...")
+    
+except (ConnectionFailure, ServerSelectionTimeoutError) as e:
+    error_msg = (
+        f"❌ MongoDB connection failed: {str(e)}\n"
+        "   Check that:\n"
+        "   1. MONGO_URL is correct\n"
+        "   2. MongoDB Atlas cluster is running\n"
+        "   3. IP whitelist includes Render server (or 0.0.0.0/0)\n"
+        "   4. Database name in MONGO_URL matches cluster"
+    )
+    print(error_msg, file=sys.stderr)
+    raise RuntimeError(error_msg) from e
 
-print(f"[startup] Loaded .env from: {ENV_PATH}")
-print(f"[startup] Mongo URL: {MONGO_URL[:30]}...")
-print(f"[startup] Mongo database selected: {db.name}")
+except Exception as e:
+    error_msg = f"❌ Unexpected MongoDB error: {str(e)}"
+    print(error_msg, file=sys.stderr)
+    raise RuntimeError(error_msg) from e
 
 patients_collection = db["patients"]
 doctor_decisions_collection = db["doctor_decisions"]

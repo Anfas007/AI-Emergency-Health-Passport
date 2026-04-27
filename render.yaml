@@ -1,20 +1,71 @@
+# Render.com Web Service Configuration for AI Emergency Health Passport Backend
+# Deploy with: render deploy --service ai-emergency-health-passport-backend
+# Or connect GitHub repo to Render and auto-deploy on push
+
 services:
   - type: web
     name: ai-emergency-health-passport-backend
     env: python
+    
+    # Root directory relative to git root where main.py and requirements.txt exist
     rootDir: backend
+    
+    # Free tier sufficient for prototype/demo; upgrade to standard for production
     plan: free
-    buildCommand: pip install -r requirements.txt
+    
+    # Build command: install Python dependencies from requirements.txt
+    # Render automatically uses pip, so we only need to list the requirements
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    
+    # Start command: run FastAPI with Uvicorn on all interfaces (0.0.0.0)
+    # $PORT is automatically injected by Render; defaults to 10000 on free tier
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    
+    # Auto-deploy on git push to main branch
     autoDeploy: true
+    
+    # Health check endpoint for Render to verify service is running
+    healthCheckPath: /health
+    
+    # Environment variables required for the backend
+    # IMPORTANT: Set these in Render dashboard → Environment tab
     envVars:
+      # Python version (must match your development environment)
       - key: PYTHON_VERSION
-        value: 3.11.9
+        value: "3.11"
+      
+      # MongoDB Atlas connection string
+      # Format: mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority
+      # Set this in Render dashboard as a secret (not in git)
       - key: MONGO_URL
-        sync: false
+        sync: false  # Don't sync from .env; use Render dashboard
+      
+      # MongoDB database name (optional; defaults to ai_emergency_health_passport)
+      - key: MONGO_DB_NAME
+        value: ai_emergency_health_passport
+      
+      # JWT secret for authentication (set in Render dashboard as a secret)
+      # Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
       - key: JWT_SECRET
-        sync: false
+        sync: false  # Don't sync from .env; use Render dashboard
+      
+      # CORS origins allowed (frontend URLs)
+      # For local development, add http://localhost:3000, etc.
+      # For production, use your deployed frontend URLs
       - key: CORS_ALLOW_ORIGINS
-        value: https://doctor-dashboard.onrender.com,https://hospital-dashboard.onrender.com
+        value: https://doctor-dashboard.onrender.com,https://hospital-dashboard.onrender.com,http://localhost:3000,http://localhost:3001,http://localhost:3002
+      
+      # CORS regex for wildcard matching (matches all .onrender.com domains)
       - key: CORS_ALLOW_ORIGIN_REGEX
-        value: https://.*\.onrender\.com
+        value: "https://.*\\.onrender\\.com"
+      
+      # Optional: enable debug logging for drug interaction checker
+      - key: DRUG_INTERACTION_DEBUG
+        value: "false"
+
+  # Optional: Add PostgreSQL or Redis services here if needed
+  # Example:
+  # - type: pserv
+  #   name: ai-health-postgres
+  #   plan: free
+  #   ipAllowList: []
