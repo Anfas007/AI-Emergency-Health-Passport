@@ -29,7 +29,7 @@ export default function EmergencyConsultation({ onBack }) {
     const raw = (url || "").trim();
     if (!raw) return "";
     if (/^https?:\/\//i.test(raw) || raw.startsWith("data:")) return raw;
-    const base = (process.env.REACT_APP_API_BASE_URL || "http://localhost:8000").replace(/\/$/, "");
+    const base = (process.env.REACT_APP_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
     return `${base}${raw.startsWith("/") ? "" : "/"}${raw}`;
   };
 

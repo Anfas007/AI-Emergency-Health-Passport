@@ -7,6 +7,7 @@ from app.routes import patient
 from app.routes import emergency
 from app.routes import auth
 from app.routes import hospital
+from app.services.database import db
 
 
 def _parse_cors_origins() -> list[str]:
@@ -60,5 +61,6 @@ app.include_router(hospital.router)
 def health_check():
     return {
         "status": "OK",
-        "message": "Backend is running successfully"
+        "message": "Backend is running successfully",
+        "mongo_db": db.name,
     }

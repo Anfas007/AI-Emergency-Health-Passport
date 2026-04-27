@@ -15,7 +15,7 @@ export default function ConsultationTimeline({ patientId }) {
   const [expandedDoctor, setExpandedDoctor] = useState(null);
   const [expandedUpload, setExpandedUpload] = useState(null);
 
-  const BACKEND_BASE = "http://localhost:8000";
+  const BACKEND_BASE = (process.env.REACT_APP_API_BASE_URL || "http://127.0.0.1:8000").replace(/\/$/, "");
 
   useEffect(() => {
     if (!patientId) return;
