@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: ai-emergency-health-passport-backend
+    env: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: MONGO_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ALLOW_ORIGINS
+        value: https://doctor-dashboard.onrender.com,https://hospital-dashboard.onrender.com
+      - key: CORS_ALLOW_ORIGIN_REGEX
+        value: https://.*\.onrender\.com

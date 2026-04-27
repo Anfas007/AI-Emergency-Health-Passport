@@ -1,16 +1,64 @@
-# mobile_app
+# AI Emergency Health Passport - Mobile App
 
-A new Flutter project.
+## 1) Configure API base URL
 
-## Getting Started
+`ApiService` reads backend URL from `API_BASE_URL` via `--dart-define`.
 
-This project is a starting point for a Flutter application.
+Examples:
 
-A few resources to get you started if this is your first Flutter project:
+- Local LAN backend: `http://192.168.x.x:8000`
+- Cloud backend: `https://your-backend-url.com`
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## 2) Run from USB (development)
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```bash
+flutter run --dart-define=API_BASE_URL=http://192.168.x.x:8000
+```
+
+## 3) Build standalone APK (works after USB disconnect)
+
+Debug APK:
+
+```bash
+flutter build apk --debug --dart-define=API_BASE_URL=http://192.168.x.x:8000
+```
+
+Release APK:
+
+```bash
+flutter build apk --release --dart-define=API_BASE_URL=https://your-backend-url.com
+```
+
+Output APK paths:
+
+- `build/app/outputs/flutter-apk/app-debug.apk`
+- `build/app/outputs/flutter-apk/app-release.apk`
+
+Install APK on connected phone:
+
+```bash
+adb install -r build/app/outputs/flutter-apk/app-debug.apk
+```
+
+After install, disconnect USB and launch app from phone app drawer. App stays installed and opens normally.
+
+## 4) Local backend requirements (LAN testing)
+
+Start backend so phone can reach it:
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+Also ensure:
+
+- Phone and laptop are on same Wi-Fi.
+- Windows Firewall allows inbound TCP port `8000`.
+
+## 5) Permanent usage without laptop dependency
+
+Deploy backend to a cloud host (Render, Railway, Fly.io, etc.), then rebuild APK with cloud URL:
+
+```bash
+flutter build apk --release --dart-define=API_BASE_URL=https://your-backend-url.com
+```

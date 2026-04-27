@@ -8,6 +8,21 @@ from app.routes import emergency
 from app.routes import auth
 from app.routes import hospital
 
+
+def _parse_cors_origins() -> list[str]:
+    raw = os.getenv("CORS_ALLOW_ORIGINS", "")
+    if not raw.strip():
+        return [
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "http://localhost:3002",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:3001",
+            "http://127.0.0.1:3002",
+        ]
+
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
 app = FastAPI(
     title="Emergency Health Passport",
     description="QR-based emergency health access system",
@@ -18,17 +33,11 @@ app = FastAPI(
 os.makedirs("uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
-# Allow the React dev server and any localhost origin
+# CORS: local dev origins by default, overridable via CORS_ALLOW_ORIGINS.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://localhost:3002",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001",
-        "http://127.0.0.1:3002",
-    ],
+    allow_origins=_parse_cors_origins(),
+    allow_origin_regex=os.getenv("CORS_ALLOW_ORIGIN_REGEX", r"https://.*\\.onrender\\.com"),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
