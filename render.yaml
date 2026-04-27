@@ -6,6 +6,7 @@ services:
   - type: web
     name: ai-emergency-health-passport-backend
     env: python
+    pythonVersion: 3.11.0
     
     # Root directory relative to git root where main.py and requirements.txt exist
     rootDir: backend
@@ -13,9 +14,9 @@ services:
     # Free tier sufficient for prototype/demo; upgrade to standard for production
     plan: free
     
-    # Build command: install Python dependencies from requirements.txt
-    # Render automatically uses pip, so we only need to list the requirements
-    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    # Build command: install build tooling first, then the curated production requirements
+    # requirements-render.txt is smaller and avoids unnecessary dev-only packages
+    buildCommand: python -m pip install --upgrade pip setuptools wheel && python -m pip install -r requirements-render.txt
     
     # Start command: run FastAPI with Uvicorn on all interfaces (0.0.0.0)
     # $PORT is automatically injected by Render; defaults to 10000 on free tier
