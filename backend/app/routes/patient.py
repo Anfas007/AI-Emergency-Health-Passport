@@ -696,6 +696,69 @@ def get_medical_history(patient_id: str, current: dict = Depends(get_current_doc
     return {"patient_id": pid, "medical_history": medical_history}
 
 
+@router.post("/check-drug-interactions/{patient_id}")
+def check_drug_interactions(patient_id: str, payload: dict, current: dict = Depends(get_current_doctor)):
+    """Check for drug interactions between prescribed medications and patient's existing medications.
+    
+    Body: {
+        "prescribed_drugs": ["aspirin 500mg", "warfarin 5mg"],  // New drugs to prescribe
+        "existing_medications": ["lisinopril 10mg", "metformin 1000mg"]  // Optional: patient's current meds (overrides database)
+    }
+    
+    Returns: {
+        "title": "⚠ Drug Interaction Warning",
+        "warnings": [
+            {
+                "type": "drug_drug",
+                "severity": "high",
+                "drug_a": "aspirin",
+                "drug_b": "warfarin",
+                "risk": "increased bleeding risk",
+                "recommendation": "Review regimen before prescribing.",
+                "message": "Aspirin + Warfarin may cause a drug interaction."
+            }
+        ],
+        "has_warnings": true,
+        "warning_count": 1,
+        "highest_severity": "high"
+    }
+    """
+    # Get patient from database
+    patient = patients_collection.find_one({"patient_id": patient_id}, {"_id": 0})
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    
+    # Extract prescribed and existing medications from request
+    prescribed_drugs = payload.get("prescribed_drugs") or []
+    existing_medications = payload.get("existing_medications")
+    
+    # If no existing medications provided, use patient's current medications from database
+    if not existing_medications:
+        existing_medications = patient.get("medications", []) or []
+    
+    # Get patient's conditions for drug-condition interaction checking
+    patient_conditions = patient.get("chronic_conditions", []) or []
+    
+    # Call the drug interaction checker
+    warnings = get_drug_interaction_warnings(
+        {"medications": existing_medications, "chronic_conditions": patient_conditions},
+        prescribed_drugs
+    )
+    
+    # Audit log
+    log_emergency_access(
+        patient_id=patient_id,
+        role="doctor",
+        mode="DRUG_INTERACTION_CHECK",
+        detail=f"Checked drug interactions for {len(prescribed_drugs)} new drugs",
+        actor_id=current.get("doctor_id", ""),
+        hospital_code=current.get("hospital_code", ""),
+        actor_name=current.get("name", ""),
+    )
+    
+    return warnings
+
+
 @router.post("/notify/{patient_id}")
 def notify_patient(patient_id: str, payload: dict, current: dict = Depends(get_current_doctor)):
     """Create a notification record for the patient about new record access.

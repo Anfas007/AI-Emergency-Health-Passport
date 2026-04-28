@@ -9,7 +9,11 @@ def _normalize_drug(name: str) -> str:
 	value = " ".join(str(name).strip().lower().split())
 	value = value.replace("-", " ").replace("/", " ")
 	value = re.sub(r"[^a-z0-9\s]", "", value)
-	value = re.sub(r"\b\d+(?:\.\d+)?\s*(?:mg|mcg|g|ml)\b", "", value)
+	# Remove dosages like "5mg", "10.5 g", etc.
+	value = re.sub(r"\b\d+(?:\.\d+)?\s*(?:mg|mcg|μg|g|ml|l)\b", "", value)
+	# Remove common frequency/timing words
+	value = re.sub(r"\b(?:daily|twice|thrice|once|morning|evening|night|afternoon|noon|midnight|"
+		r"before|after|before\s+meals|after\s+meals|with\s+food|as\s+needed|prn|bd|tid|qid|od|od)\b", "", value)
 	return " ".join(value.split())
 
 
