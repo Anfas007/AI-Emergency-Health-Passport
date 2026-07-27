@@ -1,58 +1,33 @@
-# AI Emergency Health Passport - Mobile App (Local Backend)
+# Mobile App
 
-This app is configured to use your laptop-hosted FastAPI backend over LAN.
+This folder contains the Flutter app used by patients.
 
-## 1) API base URL (no Railway)
+## What The App Does
 
-`ApiService` reads API base URL from `API_BASE_URL` with this default:
+- Lets patients register and log in
+- Shows patient health information
+- Sends requests to the backend server
+- Supports the emergency health passport workflow
 
-`http://192.168.x.x:8000`
+## How To Run It
 
-Code in `lib/services/api_service.dart`:
-
-```dart
-const String baseUrl = String.fromEnvironment(
-	'API_BASE_URL',
-	defaultValue: 'http://192.168.x.x:8000',
-);
-```
-
-Use your actual PC LAN IP (for example, `192.168.1.10`) when running or building.
-
-## 2) Run backend locally
-
-From `backend/`:
+1. Start the backend first.
+2. Install Flutter dependencies:
 
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8000
+flutter pub get
 ```
 
-## 3) Network requirements
-
-- Phone and laptop must be connected to the same Wi-Fi.
-- Windows Firewall must allow inbound TCP on port `8000`.
-- Do not use `localhost` or `127.0.0.1` for physical Android device testing.
-
-## 4) Run Flutter app
+3. Run the app and point it to your backend:
 
 ```bash
-flutter run --dart-define=API_BASE_URL=http://192.168.x.x:8000
+flutter run --dart-define=API_BASE_URL=http://<your-backend-ip>:8000
 ```
 
-## 5) Build debug APK
+If you are testing on a real phone, use your computer's IP address instead of `localhost`.
 
-```bash
-flutter build apk --debug --dart-define=API_BASE_URL=http://192.168.x.x:8000
-```
+## Helpful Notes
 
-## 6) Verify flows
-
-- Login works
-- Register works
-- Medical profile works
-- Doctor dashboard works
-
-## 7) Important note
-
-The app works only while your laptop backend is running and reachable on the same network.
-If the laptop is OFF or disconnected, the mobile app API calls will fail.
+- Your phone and computer must be on the same network when testing locally.
+- If the app cannot connect, check that the backend is still running.
+- For more setup details, see the root `README.md`.
