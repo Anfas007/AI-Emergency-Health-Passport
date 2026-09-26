@@ -13,8 +13,9 @@ import 'package:health_passport/main.dart';
 void main() {
   testWidgets('App boots', (WidgetTester tester) async {
     await tester.pumpWidget(const AiHealthPassportApp());
+    // Advance past splash routing without waiting for its repeating ripple.
     await tester.pump(const Duration(seconds: 3));
-    await tester.pumpAndSettle();
+    await tester.pump();
 
     expect(find.byType(MaterialApp), findsOneWidget);
   });

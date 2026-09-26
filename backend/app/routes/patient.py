@@ -7,7 +7,11 @@ from app.services.database import (
 from app.services.patient_id_generator import generate_patient_id
 from app.services.audit_service import log_emergency_access
 from datetime import datetime, timedelta
-from app.services.auth_service import get_current_doctor, get_current_doctor_with_hospital
+from app.services.auth_service import (
+    get_current_doctor_only as get_current_doctor,
+    get_current_patient,
+    get_current_doctor_with_hospital,
+)
 from app.services.clinical_rules_service import get_patient_risk_and_summary, get_drug_interaction_warnings
 import uuid
 
@@ -377,7 +381,10 @@ def request_normal_access(patient_id: str, current: dict = Depends(get_current_d
 
 
 @router.get("/consent/{patient_id}")
-def get_consent_status(patient_id: str):
+def get_consent_status(
+    patient_id: str,
+    current: dict = Depends(get_current_doctor),
+):
     """Return the current patient consent status (if any)."""
     from app.services.database import consent_collection
 
@@ -416,14 +423,14 @@ def request_additional_consent(patient_id: str, current: dict = Depends(get_curr
 
 
 @router.post("/grant-consent/{patient_id}")
-def grant_consent_by_patient(patient_id: str, payload: dict):
-    """Public endpoint to allow a patient (or patient-facing system) to grant consent.
-
-    NOTE: This endpoint is intentionally permissive because the patient-facing
-    module is not yet implemented. In production this should be protected and
-    require proper patient authentication or a signed consent token.
-    Body: { granted: bool, duration_minutes?: int, granted_by?: str, note?: str }
-    """
+def grant_consent_by_patient(
+    patient_id: str,
+    payload: dict,
+    current: dict = Depends(get_current_patient),
+):
+    """Allow only the authenticated patient to grant or deny consent."""
+    if current.get("patient_id") != patient_id:
+        raise HTTPException(status_code=403, detail="Patient identity mismatch")
     from app.services.database import consent_collection
 
     granted = bool(payload.get("granted", True))

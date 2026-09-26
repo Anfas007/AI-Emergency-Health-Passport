@@ -58,6 +58,22 @@ def get_current_doctor(credentials: HTTPAuthorizationCredentials = Security(secu
     return decode_access_token(token)
 
 
+def get_current_doctor_only(credentials: HTTPAuthorizationCredentials = Security(security_scheme)) -> dict:
+    """Validate a JWT and require a clinician identity for clinician routes."""
+    payload = decode_access_token(credentials.credentials)
+    if payload.get("role") != "doctor":
+        raise HTTPException(status_code=403, detail="Doctor access required")
+    return payload
+
+
+def get_current_patient(credentials: HTTPAuthorizationCredentials = Security(security_scheme)) -> dict:
+    """Validate a JWT and require the authenticated patient identity."""
+    payload = decode_access_token(credentials.credentials)
+    if payload.get("role") != "patient":
+        raise HTTPException(status_code=403, detail="Patient access required")
+    return payload
+
+
 def get_current_doctor_with_hospital(credentials: HTTPAuthorizationCredentials = Security(security_scheme)) -> dict:
     """
     FastAPI dependency – same as get_current_doctor but also verifies that

@@ -63,6 +63,17 @@ def get_current_admin(
     return payload
 
 
+def _hospital_patient_ids(hospital_code: str) -> set[str]:
+    """Return patient IDs with activity recorded at this hospital."""
+    patient_ids = set(consultations_collection.distinct(
+        "patient_id", {"hospital_code": hospital_code}
+    ))
+    patient_ids.update(audit_logs_collection.distinct(
+        "patient_id", {"hospital_code": hospital_code, "patient_id": {"$ne": ""}}
+    ))
+    return {patient_id for patient_id in patient_ids if patient_id}
+
+
 # ═══════════════════════════════════════════════
 # 1️⃣  HOSPITAL ADMIN AUTH
 # ═══════════════════════════════════════════════
@@ -612,14 +623,15 @@ def get_doctor_detail(doctor_id: str, current: dict = Depends(get_current_admin)
 @router.get("/record-access")
 def monitor_record_access(current: dict = Depends(get_current_admin)):
     """Return recent record access events: emergency scans, auto-shares, etc."""
+    hospital_code = current["hospital_code"]
     # Audit logs (emergency access)
     access_logs = list(audit_logs_collection.find(
-        {}, {"_id": 0}
+        {"hospital_code": hospital_code}, {"_id": 0}
     ).sort("timestamp", -1).limit(200))
 
     # Shared access records (auto-shares to hospitals)
     shared = list(shared_access_collection.find(
-        {}, {"_id": 0}
+        {"hospital_code": hospital_code}, {"_id": 0}
     ).sort("created_at", -1).limit(100))
 
     return {
@@ -640,25 +652,22 @@ def view_audit_logs(
     limit: int = 200,
     patient_id: str = "",
     mode: str = "",
-    hospital_only: bool = False,
+    hospital_only: bool = True,
 ):
     """View full audit trail with optional filters.
-    Set hospital_only=true to see only logs from this hospital."""
-    query = {}
+    Audit records are always restricted to the authenticated hospital."""
+    query = {"hospital_code": current["hospital_code"]}
     if patient_id:
         query["patient_id"] = patient_id
     if mode:
         query["mode"] = mode.upper()
-    if hospital_only:
-        query["hospital_code"] = current["hospital_code"]
-
     logs = list(audit_logs_collection.find(
         query, {"_id": 0}
     ).sort("timestamp", -1).limit(limit))
 
     return {
         "total": len(logs),
-        "filters": {"patient_id": patient_id, "mode": mode, "hospital_only": hospital_only},
+        "filters": {"patient_id": patient_id, "mode": mode, "hospital_only": True},
         "logs": logs,
     }
 
@@ -683,18 +692,21 @@ def generate_compliance_report(
     """
     hospital_code = current["hospital_code"]
 
-    # Doctors summary
-    total_doctors = doctors_collection.count_documents({"hospital_code": hospital_code})
+    # Doctors summary uses the same active-association source as the dashboard.
+    active_doctor_ids = list(doctor_hospital_associations_collection.distinct(
+        "doctor_id", {"hospital_code": hospital_code, "status": "active"}
+    ))
+    total_doctors = len(active_doctor_ids)
     verified_doctors = doctors_collection.count_documents({
-        "hospital_code": hospital_code, "verified": True
+        "doctor_id": {"$in": active_doctor_ids}, "verified": True
     })
     unverified_doctors = total_doctors - verified_doctors
 
-    # Patients
-    total_patients = patients_collection.count_documents({})
+    # Patients with records or access activity at this hospital
+    total_patients = len(_hospital_patient_ids(hospital_code))
 
     # Emergency sessions
-    session_query = {}
+    session_query = {"hospital_code": hospital_code}
     if filters.start_date:
         session_query["timestamp"] = {"$gte": filters.start_date}
     if filters.end_date:
@@ -712,13 +724,13 @@ def generate_compliance_report(
         severity_counts[doc["_id"] or "UNKNOWN"] = doc["count"]
 
     # Auto-share events
-    share_query = {}
+    share_query = {"hospital_code": hospital_code}
     if filters.patient_id:
         share_query["patient_id"] = filters.patient_id
     total_auto_shares = shared_access_collection.count_documents(share_query)
 
     # Access logs
-    log_query = {}
+    log_query = {"hospital_code": hospital_code}
     if filters.patient_id:
         log_query["patient_id"] = filters.patient_id
     if filters.doctor_id:
@@ -839,12 +851,15 @@ def enhanced_audit_logs(
     if date_to:
         query.setdefault("timestamp", {})["$lte"] = date_to
 
+    query["hospital_code"] = current["hospital_code"]
     logs = list(audit_logs_collection.find(
         query, {"_id": 0}
     ).sort("timestamp", -1).limit(limit))
 
     # Gather distinct access types for filter dropdowns
-    access_types = audit_logs_collection.distinct("mode")
+    access_types = audit_logs_collection.distinct(
+        "mode", {"hospital_code": current["hospital_code"]}
+    )
 
     return {
         "total": len(logs),
@@ -874,8 +889,8 @@ def dashboard_stats(current: dict = Depends(get_current_admin)):
         {"hospital_code": hospital_code, "status": "active"}
     )
 
-    # 2. Total patients in the system
-    total_patients = patients_collection.count_documents({})
+    # 2. Patients with records or access activity at this hospital
+    total_patients = len(_hospital_patient_ids(hospital_code))
 
     # 3. Emergency scans today (audit logs with mode EMERGENCY for today)
     today_str = datetime.utcnow().strftime("%Y-%m-%d")

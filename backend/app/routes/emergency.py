@@ -193,6 +193,7 @@ def scan_emergency_qr(token: str, authorization: str = Header(None)):
         role,
         actor_id=actor_id,
         actor_name=auth_payload.get("name", "") if auth_payload else "",
+        hospital_code=auth_payload.get("hospital_code", "") if auth_payload else "",
     )
 
     # Notify patient about emergency access event.
