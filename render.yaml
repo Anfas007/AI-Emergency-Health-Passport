@@ -57,7 +57,7 @@ services:
       
       # CORS regex for wildcard matching (matches all .onrender.com domains)
       - key: CORS_ALLOW_ORIGIN_REGEX
-        value: "https://.*\\.onrender\\.com"
+        value: 'https://.*\.onrender\.com'
       
       # Optional: enable debug logging for drug interaction checker
       - key: DRUG_INTERACTION_DEBUG

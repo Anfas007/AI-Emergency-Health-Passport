@@ -60,7 +60,7 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 # Required for frontend apps to access backend from different domains
 
 cors_origins = _parse_cors_origins()
-cors_regex = os.getenv("CORS_ALLOW_ORIGIN_REGEX", r"https://.*\\.onrender\\.com")
+cors_regex = os.getenv("CORS_ALLOW_ORIGIN_REGEX", r"https://.*\.onrender\.com")
 
 app.add_middleware(
     CORSMiddleware,
