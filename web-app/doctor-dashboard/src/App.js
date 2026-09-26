@@ -9,6 +9,8 @@ import DoctorProfile from "./pages/DoctorProfile";
 import HospitalSelector from "./components/HospitalSelector";
 import { getToken, clearToken, fetchCurrentDoctor, getActiveHospital, getSavedHospitals } from "./services/api";
 
+const HOSPITAL_DASHBOARD_URL = process.env.REACT_APP_HOSPITAL_DASHBOARD_URL || "https://hospital-dashboard.onrender.com";
+
 function App() {
   const [doctor, setDoctor] = useState(null);   // logged-in doctor object
   const [hospitals, setHospitals] = useState([]); // doctor's hospital affiliations
@@ -104,7 +106,7 @@ function App() {
     return (
       <Login
         onLogin={handleLogin}
-        onGoSignup={() => window.open("http://localhost:3002","_blank")}
+        onGoSignup={() => window.open(HOSPITAL_DASHBOARD_URL, "_blank")}
       />
     );
   }
