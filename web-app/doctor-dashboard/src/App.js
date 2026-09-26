@@ -9,7 +9,7 @@ import DoctorProfile from "./pages/DoctorProfile";
 import HospitalSelector from "./components/HospitalSelector";
 import { getToken, clearToken, fetchCurrentDoctor, getActiveHospital, getSavedHospitals } from "./services/api";
 
-const HOSPITAL_DASHBOARD_URL = process.env.REACT_APP_HOSPITAL_DASHBOARD_URL || "https://hospital-dashboard.onrender.com";
+const HOSPITAL_DASHBOARD_URL = process.env.REACT_APP_HOSPITAL_DASHBOARD_URL || "https://hospital-dashboard-ca0u.onrender.com";
 
 function App() {
   const [doctor, setDoctor] = useState(null);   // logged-in doctor object
